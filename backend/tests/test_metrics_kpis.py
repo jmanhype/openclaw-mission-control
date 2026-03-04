@@ -6,6 +6,9 @@ from uuid import uuid4
 import pytest
 
 from app.api import metrics as metrics_api
+from app.models.approvals import Approval
+from app.models.boards import Board
+from app.models.tasks import Task
 
 
 class _ExecResult:
@@ -97,16 +100,34 @@ async def test_pending_approvals_snapshot_returns_empty_for_empty_scope() -> Non
 async def test_pending_approvals_snapshot_maps_rows() -> None:
     approval_id = uuid4()
     board_id = uuid4()
+    organization_id = uuid4()
+    task_id = uuid4()
     created_at = datetime(2026, 3, 4, 12, 0, 0)
+    approval = Approval(
+        id=approval_id,
+        board_id=board_id,
+        task_id=task_id,
+        action_type="approve_task",
+        confidence=87.0,
+        created_at=created_at,
+        status="pending",
+    )
+    board = Board(
+        id=board_id,
+        organization_id=organization_id,
+        name="Operations Board",
+        slug="operations-board",
+    )
+    task = Task(
+        id=task_id,
+        board_id=board_id,
+        title="Validate rollout checklist",
+    )
     rows: list[tuple[object, ...]] = [
         (
-            approval_id,
-            board_id,
-            "Operations Board",
-            "approve_task",
-            87.0,
-            created_at,
-            "Validate rollout checklist",
+            approval,
+            board,
+            task,
         )
     ]
     session = _SequentialSession(

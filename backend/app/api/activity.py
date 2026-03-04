@@ -248,14 +248,11 @@ async def list_activity(
     actor: ActorContext = ACTOR_DEP,
 ) -> LimitOffsetPage[ActivityEventRead]:
     """List activity events visible to the calling actor."""
-    statement: Any = (
-        select(
-            ActivityEvent,
-            col(ActivityEvent.board_id).label("event_board_id"),
-            col(Task.board_id).label("task_board_id"),
-        )
-        .outerjoin(Task, col(ActivityEvent.task_id) == col(Task.id))
-    )
+    statement: Any = select(
+        ActivityEvent,
+        col(ActivityEvent.board_id).label("event_board_id"),
+        col(Task.board_id).label("task_board_id"),
+    ).outerjoin(Task, col(ActivityEvent.task_id) == col(Task.id))
     if actor.actor_type == "agent" and actor.agent:
         statement = statement.where(col(ActivityEvent.agent_id) == actor.agent.id)
     elif actor.actor_type == "user" and actor.user:

@@ -423,15 +423,7 @@ async def _pending_approvals_snapshot(
 
     rows = (
         await session.exec(
-            select(
-                col(Approval.id),
-                col(Approval.board_id),
-                col(Board.name),
-                col(Approval.action_type),
-                col(Approval.confidence),
-                col(Approval.created_at),
-                col(Task.title),
-            )
+            select(Approval, Board, Task)
             .join(Board, col(Board.id) == col(Approval.board_id))
             .outerjoin(Task, col(Task.id) == col(Approval.task_id))
             .where(col(Approval.board_id).in_(board_ids))
@@ -443,15 +435,15 @@ async def _pending_approvals_snapshot(
 
     items = [
         DashboardPendingApproval(
-            approval_id=approval_id,
-            board_id=board_id,
-            board_name=board_name,
-            action_type=action_type,
-            confidence=float(confidence),
-            created_at=created_at,
-            task_title=task_title,
+            approval_id=approval.id,
+            board_id=approval.board_id,
+            board_name=board.name,
+            action_type=approval.action_type,
+            confidence=float(approval.confidence),
+            created_at=approval.created_at,
+            task_title=task.title if task is not None else None,
         )
-        for approval_id, board_id, board_name, action_type, confidence, created_at, task_title in rows
+        for approval, board, task in rows
     ]
     return DashboardPendingApprovals(total=total, items=items)
 

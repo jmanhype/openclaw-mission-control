@@ -129,9 +129,7 @@ def test_coerce_activity_rows_rejects_invalid_values():
     event = _make_event()
     with pytest.raises(
         TypeError,
-        match=(
-            "Expected \\(ActivityEvent, event_board_id, task_board_id\\) rows"
-        ),
+        match="Expected \\(ActivityEvent, event_board_id, task_board_id\\) rows",
     ):
         _coerce_activity_rows([(event, "bad", None)])
 
