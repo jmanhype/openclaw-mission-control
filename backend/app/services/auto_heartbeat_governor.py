@@ -42,7 +42,7 @@ from app.services.openclaw.provisioning import (
 
 logger = get_logger(__name__)
 
-# Governor cadence + behaviour (defaults; may be overridden by board policy).
+# Governor defaults; board policy may override backoff behaviour.
 DEFAULT_ACTIVE_EVERY = "5m"
 DEFAULT_LADDER: list[str] = ["10m", "30m", "1h", "3h", "6h"]
 DEFAULT_LEAD_CAP_EVERY = "1h"
@@ -200,7 +200,14 @@ async def run_governor_once() -> None:
 
         try:
             now = utcnow()
-            agents = (await session.exec(select(Agent))).all()
+            agents = (
+                await session.exec(
+                    select(Agent).where(
+                        col(Agent.auto_heartbeat_enabled).is_(True),
+                        col(Agent.gateway_id).is_not(None),
+                    ),
+                )
+            ).all()
             if not agents:
                 return
 

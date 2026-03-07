@@ -73,7 +73,6 @@ type GovernorActivityTriggerType = "A" | "B";
 
 type AutoHeartbeatGovernorPolicy = {
   enabled: boolean;
-  run_interval_seconds: number;
   ladder: string[];
   lead_cap_every: string;
   activity_trigger_type: GovernorActivityTriggerType;
@@ -1280,31 +1279,6 @@ export default function EditBoardPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-900">
-                        Run interval (seconds)
-                      </label>
-                      <Input
-                        type="number"
-                        min={30}
-                        step={1}
-                        value={currentGovernorPolicy.run_interval_seconds}
-                        onChange={(event) => {
-                          const next = Number.parseInt(event.target.value, 10);
-                          setGovernorPolicyDraft({
-                            ...currentGovernorPolicy,
-                            run_interval_seconds: Number.isNaN(next)
-                              ? 300
-                              : Math.max(30, next),
-                          });
-                        }}
-                        disabled={isLoading || saveGovernorPolicyMutation.isPending}
-                      />
-                      <p className="text-xs text-slate-500">
-                        Hint for cadence; backend enforces 30s minimum.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-900">
                         Activity trigger type
                       </label>
                       <Select
@@ -1382,8 +1356,6 @@ export default function EditBoardPage() {
                         setGovernorPolicySaveSuccess(null);
                         saveGovernorPolicyMutation.mutate({
                           enabled: currentGovernorPolicy.enabled,
-                          run_interval_seconds:
-                            currentGovernorPolicy.run_interval_seconds,
                           ladder: currentGovernorPolicy.ladder,
                           lead_cap_every: currentGovernorPolicy.lead_cap_every,
                           activity_trigger_type:

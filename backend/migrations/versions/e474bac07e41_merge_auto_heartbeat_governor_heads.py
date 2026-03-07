@@ -63,6 +63,9 @@ def upgrade() -> None:
         ["auto_heartbeat_off"],
         unique=False,
     )
+    op.alter_column("agents", "auto_heartbeat_enabled", server_default=None)
+    op.alter_column("agents", "auto_heartbeat_step", server_default=None)
+    op.alter_column("agents", "auto_heartbeat_off", server_default=None)
 
     op.add_column(
         "boards",
@@ -71,15 +74,6 @@ def upgrade() -> None:
             sa.Boolean(),
             nullable=False,
             server_default=sa.text("true"),
-        ),
-    )
-    op.add_column(
-        "boards",
-        sa.Column(
-            "auto_heartbeat_governor_run_interval_seconds",
-            sa.Integer(),
-            nullable=False,
-            server_default="300",
         ),
     )
     op.add_column(
@@ -109,13 +103,16 @@ def upgrade() -> None:
             server_default="B",
         ),
     )
+    op.alter_column("boards", "auto_heartbeat_governor_enabled", server_default=None)
+    op.alter_column("boards", "auto_heartbeat_governor_ladder", server_default=None)
+    op.alter_column("boards", "auto_heartbeat_governor_lead_cap_every", server_default=None)
+    op.alter_column("boards", "auto_heartbeat_governor_activity_trigger_type", server_default=None)
 
 
 def downgrade() -> None:
     op.drop_column("boards", "auto_heartbeat_governor_activity_trigger_type")
     op.drop_column("boards", "auto_heartbeat_governor_lead_cap_every")
     op.drop_column("boards", "auto_heartbeat_governor_ladder")
-    op.drop_column("boards", "auto_heartbeat_governor_run_interval_seconds")
     op.drop_column("boards", "auto_heartbeat_governor_enabled")
 
     op.drop_index(op.f("ix_agents_auto_heartbeat_off"), table_name="agents")

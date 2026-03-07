@@ -109,7 +109,6 @@ async def test_get_and_patch_policy_round_trip() -> None:
             "activity_trigger_type": "A",
             "ladder": ["15m", "45m"],
             "lead_cap_every": "2h",
-            "run_interval_seconds": 600,
         }
         resp = await client.patch(
             f"/api/v1/boards/{board.id}/auto-heartbeat-governor-policy",
@@ -121,7 +120,6 @@ async def test_get_and_patch_policy_round_trip() -> None:
         assert updated["activity_trigger_type"] == "A"
         assert updated["ladder"] == ["15m", "45m"]
         assert updated["lead_cap_every"] == "2h"
-        assert updated["run_interval_seconds"] == 600
 
     await engine.dispose()
 
@@ -145,6 +143,35 @@ async def test_policy_validation_rejects_disabled_duration() -> None:
             json={"lead_cap_every": "disabled"},
         )
         assert resp.status_code == 422
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_policy_validation_rejects_nulls_and_unknown_fields() -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_maker() as session:
+        board = await _seed_board(session)
+
+    app = _build_test_app(session_maker, board.id)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        null_resp = await client.patch(
+            f"/api/v1/boards/{board.id}/auto-heartbeat-governor-policy",
+            json={"lead_cap_every": None},
+        )
+        assert null_resp.status_code == 422
+
+        extra_resp = await client.patch(
+            f"/api/v1/boards/{board.id}/auto-heartbeat-governor-policy",
+            json={"run_interval_seconds": 600},
+        )
+        assert extra_resp.status_code == 422
 
     await engine.dispose()
 

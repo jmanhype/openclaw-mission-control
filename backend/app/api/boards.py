@@ -106,6 +106,15 @@ def _board_update_message(
     return "\n".join(lines)
 
 
+def _reject_null_governor_policy_fields(updates: dict[str, object]) -> None:
+    null_fields = sorted(field_name for field_name, value in updates.items() if value is None)
+    if null_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{', '.join(null_fields)} cannot be null",
+        )
+
+
 async def _require_gateway_main_agent(session: AsyncSession, gateway: Gateway) -> None:
     main_agent = (
         await Agent.objects.filter_by(gateway_id=gateway.id)
@@ -512,7 +521,6 @@ def get_auto_heartbeat_governor_policy(
     """Get board-scoped auto heartbeat governor policy."""
     return AutoHeartbeatGovernorPolicyRead(
         enabled=bool(board.auto_heartbeat_governor_enabled),
-        run_interval_seconds=int(board.auto_heartbeat_governor_run_interval_seconds),
         ladder=list(board.auto_heartbeat_governor_ladder or []),
         lead_cap_every=str(board.auto_heartbeat_governor_lead_cap_every),
         activity_trigger_type=str(board.auto_heartbeat_governor_activity_trigger_type),
@@ -530,10 +538,9 @@ async def update_auto_heartbeat_governor_policy(
 ) -> AutoHeartbeatGovernorPolicyRead:
     """Patch board-scoped auto heartbeat governor policy."""
     updates = payload.model_dump(exclude_unset=True)
+    _reject_null_governor_policy_fields(updates)
     if "enabled" in updates:
         board.auto_heartbeat_governor_enabled = bool(updates["enabled"])
-    if "run_interval_seconds" in updates:
-        board.auto_heartbeat_governor_run_interval_seconds = int(updates["run_interval_seconds"])
     if "ladder" in updates:
         board.auto_heartbeat_governor_ladder = list(updates["ladder"])
     if "lead_cap_every" in updates:

@@ -6,7 +6,7 @@ import re
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ActivityTriggerType(str, Enum):
@@ -42,12 +42,6 @@ class AutoHeartbeatGovernorPolicyBase(BaseModel):
     enabled: bool = Field(
         default=True,
         description="If false, the governor will not manage heartbeats for this board.",
-    )
-    run_interval_seconds: int = Field(
-        default=300,
-        ge=30,
-        le=24 * 60 * 60,
-        description="Governor run cadence hint (seconds).",
     )
     ladder: list[DurationStr] = Field(
         default_factory=lambda: ["10m", "30m", "1h", "3h", "6h"],
@@ -94,8 +88,9 @@ class AutoHeartbeatGovernorPolicyRead(AutoHeartbeatGovernorPolicyBase):
 class AutoHeartbeatGovernorPolicyUpdate(BaseModel):
     """Patch model for board-scoped governor policy."""
 
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool | None = None
-    run_interval_seconds: int | None = Field(default=None, ge=30, le=24 * 60 * 60)
     ladder: list[DurationStr] | str | None = None
     lead_cap_every: DurationStr | None = None
     activity_trigger_type: ActivityTriggerType | None = None

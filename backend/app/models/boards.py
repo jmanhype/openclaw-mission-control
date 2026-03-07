@@ -48,7 +48,6 @@ class Board(TenantScoped, table=True):
 
     # Auto heartbeat governor policy (board-scoped).
     auto_heartbeat_governor_enabled: bool = Field(default=True)
-    auto_heartbeat_governor_run_interval_seconds: int = Field(default=300)
     auto_heartbeat_governor_ladder: list[str] = Field(
         default_factory=lambda: ["10m", "30m", "1h", "3h", "6h"],
         sa_column=Column(JSON),

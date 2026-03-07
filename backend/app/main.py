@@ -461,6 +461,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     finally:
         if governor_task is not None:
             governor_task.cancel()
+            try:
+                await governor_task
+            except asyncio.CancelledError:
+                pass
         logger.info("app.lifecycle.stopped")
 
 
