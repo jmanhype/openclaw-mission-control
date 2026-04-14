@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from statistics import median
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -164,11 +166,64 @@ def _wip_series_from_mapping(
     )
 
 
+def _is_sqlite(session: AsyncSession) -> bool:
+    """Return whether the current session is backed by SQLite."""
+    bind = session.get_bind()
+    return bool(bind is not None and bind.dialect.name == "sqlite")
+
+
+def _bucketed_counts(
+    values: list[datetime],
+    bucket: DashboardBucketKey,
+) -> dict[datetime, float]:
+    mapping: dict[datetime, float] = {}
+    for value in values:
+        bucket_start = _bucket_start(value, bucket)
+        mapping[bucket_start] = mapping.get(bucket_start, 0.0) + 1.0
+    return mapping
+
+
+def _bucketed_average(
+    pairs: list[tuple[datetime, float]],
+    bucket: DashboardBucketKey,
+) -> dict[datetime, float]:
+    totals: dict[datetime, float] = defaultdict(float)
+    counts: dict[datetime, int] = defaultdict(int)
+    for value, amount in pairs:
+        bucket_start = _bucket_start(value, bucket)
+        totals[bucket_start] += amount
+        counts[bucket_start] += 1
+    return {
+        bucket_start: totals[bucket_start] / counts[bucket_start]
+        for bucket_start in totals
+        if counts[bucket_start] > 0
+    }
+
+
+def _duration_hours(updated_at: datetime, in_progress_at: datetime) -> float:
+    return (updated_at - in_progress_at).total_seconds() / 3600.0
+
+
 async def _query_throughput(
     session: AsyncSession,
     range_spec: RangeSpec,
     board_ids: list[UUID],
 ) -> DashboardRangeSeries:
+    if not board_ids:
+        return _series_from_mapping(range_spec, {})
+    if _is_sqlite(session):
+        rows = (
+            await session.exec(
+                select(Task.updated_at)
+                .where(col(Task.status) == "done")
+                .where(col(Task.updated_at) >= range_spec.start)
+                .where(col(Task.updated_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        mapping = _bucketed_counts(list(rows), range_spec.bucket)
+        return _series_from_mapping(range_spec, mapping)
+
     bucket_col = func.date_trunc(range_spec.bucket, Task.updated_at).label("bucket")
     statement = (
         select(bucket_col, func.count())
@@ -176,8 +231,6 @@ async def _query_throughput(
         .where(col(Task.updated_at) >= range_spec.start)
         .where(col(Task.updated_at) <= range_spec.end)
     )
-    if not board_ids:
-        return _series_from_mapping(range_spec, {})
     statement = (
         statement.where(col(Task.board_id).in_(board_ids)).group_by(bucket_col).order_by(bucket_col)
     )
@@ -191,6 +244,27 @@ async def _query_cycle_time(
     range_spec: RangeSpec,
     board_ids: list[UUID],
 ) -> DashboardRangeSeries:
+    if not board_ids:
+        return _series_from_mapping(range_spec, {})
+    if _is_sqlite(session):
+        rows = (
+            await session.exec(
+                select(Task.updated_at, Task.in_progress_at)
+                .where(col(Task.status) == "review")
+                .where(col(Task.in_progress_at).is_not(None))
+                .where(col(Task.updated_at) >= range_spec.start)
+                .where(col(Task.updated_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        values = [
+            (updated_at, _duration_hours(updated_at, in_progress_at))
+            for updated_at, in_progress_at in rows
+            if updated_at is not None and in_progress_at is not None
+        ]
+        mapping = _bucketed_average(values, range_spec.bucket)
+        return _series_from_mapping(range_spec, mapping)
+
     bucket_col = func.date_trunc(range_spec.bucket, Task.updated_at).label("bucket")
     in_progress = sql_cast(Task.in_progress_at, DateTime)
     duration_hours = func.extract("epoch", Task.updated_at - in_progress) / 3600.0
@@ -201,8 +275,6 @@ async def _query_cycle_time(
         .where(col(Task.updated_at) >= range_spec.start)
         .where(col(Task.updated_at) <= range_spec.end)
     )
-    if not board_ids:
-        return _series_from_mapping(range_spec, {})
     statement = (
         statement.where(col(Task.board_id).in_(board_ids)).group_by(bucket_col).order_by(bucket_col)
     )
@@ -216,6 +288,31 @@ async def _query_error_rate(
     range_spec: RangeSpec,
     board_ids: list[UUID],
 ) -> DashboardRangeSeries:
+    if not board_ids:
+        return _series_from_mapping(range_spec, {})
+    if _is_sqlite(session):
+        rows = (
+            await session.exec(
+                select(ActivityEvent.created_at, ActivityEvent.event_type)
+                .join(Task, col(ActivityEvent.task_id) == col(Task.id))
+                .where(col(ActivityEvent.created_at) >= range_spec.start)
+                .where(col(ActivityEvent.created_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        totals: dict[datetime, int] = defaultdict(int)
+        errors: dict[datetime, int] = defaultdict(int)
+        for created_at, event_type in rows:
+            bucket_start = _bucket_start(created_at, range_spec.bucket)
+            totals[bucket_start] += 1
+            if str(event_type).endswith("failed"):
+                errors[bucket_start] += 1
+        mapping = {
+            bucket_start: (errors[bucket_start] / total) * 100 if total > 0 else 0.0
+            for bucket_start, total in totals.items()
+        }
+        return _series_from_mapping(range_spec, mapping)
+
     bucket_col = func.date_trunc(
         range_spec.bucket,
         ActivityEvent.created_at,
@@ -233,8 +330,6 @@ async def _query_error_rate(
         .where(col(ActivityEvent.created_at) >= range_spec.start)
         .where(col(ActivityEvent.created_at) <= range_spec.end)
     )
-    if not board_ids:
-        return _series_from_mapping(range_spec, {})
     statement = (
         statement.where(col(Task.board_id).in_(board_ids)).group_by(bucket_col).order_by(bucket_col)
     )
@@ -255,6 +350,35 @@ async def _query_wip(
 ) -> DashboardWipRangeSeries:
     if not board_ids:
         return _wip_series_from_mapping(range_spec, {})
+    if _is_sqlite(session):
+        inbox_rows = (
+            await session.exec(
+                select(Task.created_at)
+                .where(col(Task.status) == "inbox")
+                .where(col(Task.created_at) >= range_spec.start)
+                .where(col(Task.created_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        status_rows = (
+            await session.exec(
+                select(Task.updated_at, Task.status)
+                .where(col(Task.updated_at) >= range_spec.start)
+                .where(col(Task.updated_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+
+        mapping: dict[datetime, dict[str, int]] = {}
+        for created_at in inbox_rows:
+            values = mapping.setdefault(_bucket_start(created_at, range_spec.bucket), {})
+            values["inbox"] = values.get("inbox", 0) + 1
+        for updated_at, status_value in status_rows:
+            if status_value not in {"in_progress", "review", "done"}:
+                continue
+            values = mapping.setdefault(_bucket_start(updated_at, range_spec.bucket), {})
+            values[str(status_value)] = values.get(str(status_value), 0) + 1
+        return _wip_series_from_mapping(range_spec, mapping)
 
     inbox_bucket_col = func.date_trunc(range_spec.bucket, Task.created_at).label("inbox_bucket")
     inbox_statement = (
@@ -304,6 +428,28 @@ async def _median_cycle_time_for_range(
     range_spec: RangeSpec,
     board_ids: list[UUID],
 ) -> float | None:
+    if not board_ids:
+        return None
+    if _is_sqlite(session):
+        rows = (
+            await session.exec(
+                select(Task.updated_at, Task.in_progress_at)
+                .where(col(Task.status) == "review")
+                .where(col(Task.in_progress_at).is_not(None))
+                .where(col(Task.updated_at) >= range_spec.start)
+                .where(col(Task.updated_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        durations = [
+            _duration_hours(updated_at, in_progress_at)
+            for updated_at, in_progress_at in rows
+            if updated_at is not None and in_progress_at is not None
+        ]
+        if not durations:
+            return None
+        return float(median(durations))
+
     in_progress = sql_cast(Task.in_progress_at, DateTime)
     duration_hours = func.extract("epoch", Task.updated_at - in_progress) / 3600.0
     statement = (
@@ -313,8 +459,6 @@ async def _median_cycle_time_for_range(
         .where(col(Task.updated_at) >= range_spec.start)
         .where(col(Task.updated_at) <= range_spec.end)
     )
-    if not board_ids:
-        return None
     statement = statement.where(col(Task.board_id).in_(board_ids))
     value = (await session.exec(statement)).one_or_none()
     if value is None:
@@ -331,6 +475,23 @@ async def _error_rate_kpi(
     range_spec: RangeSpec,
     board_ids: list[UUID],
 ) -> float:
+    if not board_ids:
+        return 0.0
+    if _is_sqlite(session):
+        rows = (
+            await session.exec(
+                select(ActivityEvent.event_type)
+                .join(Task, col(ActivityEvent.task_id) == col(Task.id))
+                .where(col(ActivityEvent.created_at) >= range_spec.start)
+                .where(col(ActivityEvent.created_at) <= range_spec.end)
+                .where(col(Task.board_id).in_(board_ids)),
+            )
+        ).all()
+        if not rows:
+            return 0.0
+        error_count = sum(1 for event_type in rows if str(event_type).endswith("failed"))
+        return (error_count / len(rows)) * 100
+
     error_case = case(
         (
             col(ActivityEvent.event_type).like(ERROR_EVENT_PATTERN),
@@ -344,8 +505,6 @@ async def _error_rate_kpi(
         .where(col(ActivityEvent.created_at) >= range_spec.start)
         .where(col(ActivityEvent.created_at) <= range_spec.end)
     )
-    if not board_ids:
-        return 0.0
     statement = statement.where(col(Task.board_id).in_(board_ids))
     result = (await session.exec(statement)).one_or_none()
     if result is None:
