@@ -15,6 +15,7 @@ from app.services.openclaw.gateway_rpc import (
     OpenClawGatewayError,
     _build_connect_params,
     _build_control_ui_origin,
+    _is_loopback_gateway_url,
     openclaw_call,
 )
 
@@ -85,6 +86,17 @@ def test_build_connect_params_uses_control_ui_when_pairing_disabled() -> None:
     assert params["client"]["mode"] == CONTROL_UI_CLIENT_MODE
     assert params["client"]["platform"] == platform.system().lower()
     assert "device" not in params
+
+
+def test_is_loopback_gateway_url_accepts_local_hosts() -> None:
+    assert _is_loopback_gateway_url("ws://127.0.0.1:18789")
+    assert _is_loopback_gateway_url("ws://localhost:18789")
+    assert _is_loopback_gateway_url("ws://[::1]:18789")
+
+
+def test_is_loopback_gateway_url_rejects_remote_hosts() -> None:
+    assert not _is_loopback_gateway_url("ws://192.168.1.10:18789")
+    assert not _is_loopback_gateway_url("wss://gateway.example.com/ws")
 
 
 def test_build_connect_params_passes_nonce_to_device_payload(

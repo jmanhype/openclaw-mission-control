@@ -47,6 +47,7 @@ from app.services.openclaw.gateway_rpc import (
 )
 from app.services.openclaw.internal.agent_key import agent_key as _agent_key
 from app.services.openclaw.internal.agent_key import slugify
+from app.services.openclaw.internal.retry import with_coordination_gateway_retry
 from app.services.openclaw.internal.session_keys import (
     board_agent_session_key,
     board_lead_session_key,
@@ -640,10 +641,12 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         )
 
     async def list_agent_files(self, agent_id: str) -> dict[str, dict[str, Any]]:
-        payload = await openclaw_call(
-            "agents.files.list",
-            {"agentId": agent_id},
-            config=self._config,
+        payload = await with_coordination_gateway_retry(
+            lambda: openclaw_call(
+                "agents.files.list",
+                {"agentId": agent_id},
+                config=self._config,
+            ),
         )
         if not isinstance(payload, dict):
             return {}

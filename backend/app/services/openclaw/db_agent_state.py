@@ -49,9 +49,12 @@ def mark_provision_complete(
 ) -> None:
     """Clear provisioning fields after a successful gateway lifecycle run."""
 
+    now = utcnow()
     if clear_confirm_token:
         agent.provision_confirm_token_hash = None
     agent.status = status
+    if status == "online" and agent.last_seen_at is None:
+        agent.last_seen_at = now
     agent.provision_requested_at = None
     agent.provision_action = None
-    agent.updated_at = utcnow()
+    agent.updated_at = now

@@ -124,6 +124,7 @@ _NON_TRANSIENT_GATEWAY_ERROR_MARKERS = ("unsupported file",)
 _TRANSIENT_GATEWAY_ERROR_MARKERS = (
     "connect call failed",
     "connection refused",
+    "gateway closed",
     "errno 111",
     "econnrefused",
     "did not receive a valid http response",
@@ -139,6 +140,7 @@ _TRANSIENT_GATEWAY_ERROR_MARKERS = (
     "temporar",
     "timeout",
     "timed out",
+    "abnormal closure",
     "connection closed",
     "connection reset",
 )

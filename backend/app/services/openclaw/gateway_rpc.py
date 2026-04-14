@@ -8,8 +8,11 @@ operate within a single scope (no `app.integrations.*` plumbing).
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
+import os
 import platform as _platform
+import shutil
 import ssl
 from dataclasses import dataclass
 from time import perf_counter, time
@@ -159,6 +162,17 @@ GATEWAY_EVENTS = [
 
 GATEWAY_METHODS_SET = frozenset(GATEWAY_METHODS)
 GATEWAY_EVENTS_SET = frozenset(GATEWAY_EVENTS)
+OPENCLAW_CLI_CANDIDATES = (
+    "/opt/homebrew/bin/openclaw",
+    "/usr/local/bin/openclaw",
+)
+OPENCLAW_CLI_PATH_DIRS = (
+    "/opt/homebrew/opt/node@22/bin",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+)
 
 
 def is_known_gateway_method(method: str) -> bool:
@@ -178,6 +192,99 @@ class GatewayConfig:
     token: str | None = None
     allow_insecure_tls: bool = False
     disable_device_pairing: bool = False
+
+
+def _is_loopback_gateway_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").strip()
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _find_openclaw_cli() -> str | None:
+    env_path = os.environ.get("OPENCLAW_CLI_BIN")
+    if env_path:
+        trimmed = env_path.strip()
+        if trimmed:
+            return trimmed
+    resolved = shutil.which("openclaw")
+    if resolved:
+        return resolved
+    for candidate in OPENCLAW_CLI_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _openclaw_cli_env() -> dict[str, str]:
+    env = os.environ.copy()
+    current_path = env.get("PATH", "")
+    parts = [part for part in current_path.split(os.pathsep) if part]
+    for path in reversed(OPENCLAW_CLI_PATH_DIRS):
+        if path not in parts:
+            parts.insert(0, path)
+    env["PATH"] = os.pathsep.join(parts)
+    return env
+
+
+def _should_use_openclaw_cli(config: GatewayConfig) -> bool:
+    url = (config.url or "").strip()
+    if not url or not _is_loopback_gateway_url(url):
+        return False
+    return _find_openclaw_cli() is not None
+
+
+async def _openclaw_call_via_cli(
+    method: str,
+    params: dict[str, Any] | None,
+    *,
+    config: GatewayConfig,
+) -> object:
+    cli_path = _find_openclaw_cli()
+    if cli_path is None:
+        msg = "openclaw CLI is not available"
+        raise OpenClawGatewayError(msg)
+
+    command = [
+        cli_path,
+        "gateway",
+        "call",
+        method,
+        "--json",
+        "--url",
+        config.url,
+        "--params",
+        json.dumps(params or {}, separators=(",", ":")),
+    ]
+    if config.token:
+        command.extend(["--token", config.token])
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=_openclaw_cli_env(),
+    )
+    stdout, stderr = await process.communicate()
+    stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr.decode("utf-8", errors="replace").strip()
+
+    if process.returncode != 0:
+        message = stderr_text or stdout_text or f"openclaw CLI exited with code {process.returncode}"
+        raise OpenClawGatewayError(message)
+    if not stdout_text:
+        message = stderr_text or "openclaw CLI returned no output"
+        raise OpenClawGatewayError(message)
+    try:
+        return json.loads(stdout_text)
+    except ValueError as exc:
+        logger.error("gateway.rpc.cli.invalid_json method=%s", method)
+        message = stderr_text or stdout_text
+        raise OpenClawGatewayError(message) from exc
 
 
 def _build_gateway_url(config: GatewayConfig) -> str:
@@ -455,6 +562,14 @@ async def openclaw_call(
         config.disable_device_pairing,
     )
     try:
+        if _should_use_openclaw_cli(config):
+            payload = await _openclaw_call_via_cli(method, params, config=config)
+            logger.debug(
+                "gateway.rpc.call.success method=%s duration_ms=%s transport=cli",
+                method,
+                int((perf_counter() - started_at) * 1000),
+            )
+            return payload
         payload = await _openclaw_call_once(
             method,
             params,
