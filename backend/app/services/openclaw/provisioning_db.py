@@ -774,6 +774,16 @@ class AgentLifecycleService(OpenClawDBService):
         slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return slug or uuid4().hex
 
+    @staticmethod
+    def coerce_agent_id(value: UUID | str) -> UUID:
+        """Normalize agent identifiers for DB lookups across dialects."""
+        if isinstance(value, UUID):
+            return value
+        try:
+            return UUID(str(value))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from exc
+
     @classmethod
     def resolve_session_key(cls, agent: Agent) -> str:
         """Resolve the gateway session key for an agent.
@@ -1584,10 +1594,10 @@ class AgentLifecycleService(OpenClawDBService):
     async def get_agent(
         self,
         *,
-        agent_id: str,
+        agent_id: UUID | str,
         ctx: OrganizationContext,
     ) -> AgentRead:
-        agent = await Agent.objects.by_id(agent_id).first(self.session)
+        agent = await Agent.objects.by_id(self.coerce_agent_id(agent_id)).first(self.session)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         await self.require_agent_access(agent=agent, ctx=ctx, write=False)
@@ -1596,7 +1606,7 @@ class AgentLifecycleService(OpenClawDBService):
     async def update_agent(
         self,
         *,
-        agent_id: str,
+        agent_id: UUID | str,
         payload: AgentUpdate,
         options: AgentUpdateOptions,
     ) -> AgentRead:
@@ -1606,7 +1616,7 @@ class AgentLifecycleService(OpenClawDBService):
             agent_id,
             options.force,
         )
-        agent = await Agent.objects.by_id(agent_id).first(self.session)
+        agent = await Agent.objects.by_id(self.coerce_agent_id(agent_id)).first(self.session)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         await self.require_agent_access(agent=agent, ctx=options.context, write=True)
@@ -1650,7 +1660,7 @@ class AgentLifecycleService(OpenClawDBService):
     async def heartbeat_agent(
         self,
         *,
-        agent_id: str,
+        agent_id: UUID | str,
         payload: AgentHeartbeat,
         actor: ActorContextLike,
     ) -> AgentRead:
@@ -1660,7 +1670,7 @@ class AgentLifecycleService(OpenClawDBService):
             agent_id,
             actor.actor_type,
         )
-        agent = await Agent.objects.by_id(agent_id).first(self.session)
+        agent = await Agent.objects.by_id(self.coerce_agent_id(agent_id)).first(self.session)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         if actor.actor_type == "agent":
@@ -1726,11 +1736,11 @@ class AgentLifecycleService(OpenClawDBService):
     async def delete_agent(
         self,
         *,
-        agent_id: str,
+        agent_id: UUID | str,
         ctx: OrganizationContext,
     ) -> OkResponse:
         self.logger.log(TRACE_LEVEL, "agent.delete.start agent_id=%s", agent_id)
-        agent = await Agent.objects.by_id(agent_id).first(self.session)
+        agent = await Agent.objects.by_id(self.coerce_agent_id(agent_id)).first(self.session)
         if agent is None:
             return OkResponse()
         await self.require_agent_access(agent=agent, ctx=ctx, write=True)
@@ -1739,7 +1749,7 @@ class AgentLifecycleService(OpenClawDBService):
     async def delete_agent_as_lead(
         self,
         *,
-        agent_id: str,
+        agent_id: UUID | str,
         actor_agent: Agent,
     ) -> OkResponse:
         """Delete a board-scoped agent as the board lead."""
@@ -1748,7 +1758,7 @@ class AgentLifecycleService(OpenClawDBService):
             actor_agent=actor_agent,
             detail="Only board leads can delete agents",
         )
-        agent = await Agent.objects.by_id(agent_id).first(self.session)
+        agent = await Agent.objects.by_id(self.coerce_agent_id(agent_id)).first(self.session)
         if agent is None:
             return OkResponse()
         if agent.board_id is None:
