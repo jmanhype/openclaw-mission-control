@@ -30,6 +30,7 @@ from app.schemas.pagination import DefaultLimitOffsetPage
 from app.schemas.view_models import BoardGroupSnapshot
 from app.services.board_group_snapshot import build_group_snapshot
 from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
+from app.services.openclaw.db_agent_state import resolve_heartbeat_config
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
 from app.services.organizations import (
@@ -231,11 +232,14 @@ def _update_agent_heartbeat(
     payload: BoardGroupHeartbeatApply,
 ) -> None:
     raw = agent.heartbeat_config
-    heartbeat: dict[str, Any] = DEFAULT_HEARTBEAT_CONFIG.copy()
-    if isinstance(raw, dict):
-        heartbeat.update(raw)
+    heartbeat: dict[str, Any] = resolve_heartbeat_config(
+        board_id=agent.board_id,
+        is_board_lead=agent.is_board_lead,
+        raw=raw if isinstance(raw, dict) else None,
+    )
     heartbeat["every"] = payload.every
-    heartbeat["target"] = DEFAULT_HEARTBEAT_CONFIG.get("target", "last")
+    if heartbeat.get("target") in {None, ""}:
+        heartbeat["target"] = DEFAULT_HEARTBEAT_CONFIG.get("target", "last")
     agent.heartbeat_config = heartbeat
     agent.updated_at = utcnow()
 

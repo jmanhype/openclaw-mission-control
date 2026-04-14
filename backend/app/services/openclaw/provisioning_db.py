@@ -53,6 +53,7 @@ from app.services.openclaw.constants import (
 )
 from app.services.openclaw.db_agent_state import (
     mint_agent_token,
+    resolve_heartbeat_config,
 )
 from app.services.openclaw.db_service import OpenClawDBService
 from app.services.openclaw.gateway_resolver import (
@@ -206,7 +207,11 @@ class OpenClawProvisioningService(OpenClawDBService):
             board_id=board.id,
             gateway_id=request.gateway.id,
             is_board_lead=True,
-            heartbeat_config=DEFAULT_HEARTBEAT_CONFIG.copy(),
+            heartbeat_config=resolve_heartbeat_config(
+                board_id=board.id,
+                is_board_lead=True,
+                raw=None,
+            ),
             identity_profile=merged_identity_profile,
             openclaw_session_id=self.lead_session_key(board),
         )
@@ -1277,7 +1282,11 @@ class AgentLifecycleService(OpenClawDBService):
             agent.gateway_id = board.gateway_id
         agent.updated_at = utcnow()
         if agent.heartbeat_config is None:
-            agent.heartbeat_config = DEFAULT_HEARTBEAT_CONFIG.copy()
+            agent.heartbeat_config = resolve_heartbeat_config(
+                board_id=agent.board_id,
+                is_board_lead=agent.is_board_lead,
+                raw=None,
+            )
         self.session.add(agent)
         await self.session.commit()
         await self.session.refresh(agent)
@@ -1374,7 +1383,11 @@ class AgentLifecycleService(OpenClawDBService):
             "name": payload.name,
             "board_id": board.id,
             "gateway_id": gateway.id,
-            "heartbeat_config": DEFAULT_HEARTBEAT_CONFIG.copy(),
+            "heartbeat_config": resolve_heartbeat_config(
+                board_id=board.id,
+                is_board_lead=False,
+                raw=None,
+            ),
         }
         agent, raw_token = await self.persist_new_agent(data=data)
         await self.provision_new_agent(

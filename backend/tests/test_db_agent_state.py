@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app.models.agents import Agent
-from app.services.openclaw.db_agent_state import mark_provision_complete
+from app.services.openclaw.db_agent_state import mark_provision_complete, resolve_heartbeat_config
 from app.services.openclaw.provisioning_db import AgentLifecycleService
 
 
@@ -26,3 +26,23 @@ def test_mark_provision_complete_leaves_last_seen_empty_for_non_online_status() 
 
     assert agent.status == "offline"
     assert agent.last_seen_at is None
+
+
+def test_resolve_heartbeat_config_keeps_board_scoped_agents_internal() -> None:
+    heartbeat = resolve_heartbeat_config(
+        board_id=uuid4(),
+        is_board_lead=True,
+        raw={"every": "10m", "target": "last", "includeReasoning": False},
+    )
+
+    assert heartbeat["target"] == "none"
+
+
+def test_resolve_heartbeat_config_preserves_explicit_real_channel_targets() -> None:
+    heartbeat = resolve_heartbeat_config(
+        board_id=uuid4(),
+        is_board_lead=True,
+        raw={"every": "10m", "target": "telegram", "includeReasoning": False},
+    )
+
+    assert heartbeat["target"] == "telegram"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from app.core.agent_tokens import generate_agent_token, hash_agent_token
 from app.core.time import utcnow
@@ -10,11 +10,36 @@ from app.models.agents import Agent
 from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
 
 
+def resolve_heartbeat_config(
+    *,
+    board_id: object | None,
+    is_board_lead: bool,
+    raw: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Return a normalized heartbeat config for Mission Control-managed agents.
+
+    Board-scoped agents are internal operators, not chat-facing assistants. When their
+    heartbeat target is left at the generic default of ``last``, OpenClaw can end up
+    trying to deliver to the synthetic ``heartbeat`` channel and reject the run. Keep
+    those agents internal-only unless an explicit real channel target was configured.
+    """
+
+    heartbeat = DEFAULT_HEARTBEAT_CONFIG.copy()
+    if isinstance(raw, dict):
+        heartbeat.update(raw)
+    if (board_id is not None or is_board_lead) and heartbeat.get("target") in {None, "", "last"}:
+        heartbeat["target"] = "none"
+    return heartbeat
+
+
 def ensure_heartbeat_config(agent: Agent) -> None:
     """Ensure an agent has a heartbeat_config dict populated."""
 
-    if agent.heartbeat_config is None:
-        agent.heartbeat_config = DEFAULT_HEARTBEAT_CONFIG.copy()
+    agent.heartbeat_config = resolve_heartbeat_config(
+        board_id=agent.board_id,
+        is_board_lead=agent.is_board_lead,
+        raw=agent.heartbeat_config if isinstance(agent.heartbeat_config, dict) else None,
+    )
 
 
 def mint_agent_token(agent: Agent) -> str:
