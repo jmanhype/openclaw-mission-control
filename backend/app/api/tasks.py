@@ -1768,14 +1768,15 @@ async def _validate_task_comment_access(
         and actor.agent
         and actor.agent.is_board_lead
         and task.status != "review"
+        and task.assigned_agent_id != actor.agent.id
         and not await _lead_was_mentioned(session, task, actor.agent)
         and not _lead_created_task(task, actor.agent)
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Board leads can only comment during review, when mentioned, "
-                "or on tasks they created."
+                "Board leads can only comment during review, on tasks assigned "
+                "to them, when mentioned, or on tasks they created."
             ),
         )
 

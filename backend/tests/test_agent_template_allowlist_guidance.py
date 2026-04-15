@@ -57,5 +57,9 @@ def test_lead_templates_include_allowlist_guidance_and_avoid_shell_line_continua
 
     assert "Do not use shell line continuations (`\\` + newline)" in rendered["TOOLS.md"]
     assert "Do not use shell line continuations (`\\` + newline)" in rendered["HEARTBEAT.md"]
+    assert "/api/v1/agent/boards/" in rendered["TOOLS.md"]
+    assert '"message":"' in rendered["TOOLS.md"]
+    assert '"assigned_agent_id":null' in rendered["TOOLS.md"]
+    assert "Never assign a task to yourself when you are the board lead" in rendered["TOOLS.md"]
     assert "\\\n" not in rendered["HEARTBEAT.md"]
     assert "\\\n" not in rendered["BOOTSTRAP.md"]

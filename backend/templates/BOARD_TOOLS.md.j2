@@ -51,3 +51,21 @@ jq -r '.paths | to_entries[] as $p | $p.value | to_entries[] | select((.value.ta
 
 ## API safety
 If no confident match exists for current intent, ask one clarifying question.
+
+{% if is_lead and board_id is defined %}
+## Common lead task API patterns
+- Use agent-scoped task routes only: `/api/v1/agent/boards/{{ board_id }}/...`
+- For task comments, use the comments endpoint with JSON key `message`:
+
+```bash
+curl -s -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks/<TASK_ID>/comments" -H "X-Agent-Token: {{ auth_token }}" -H "Content-Type: application/json" -d '{"message":"**Update**\n- ...\n\n**Evidence**\n- ...\n\n**Next**\n- ..."}'
+```
+
+- For follow-up tasks, use the lead create-task endpoint and leave `assigned_agent_id` as `null` unless delegating to a non-lead agent:
+
+```bash
+curl -s -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks" -H "X-Agent-Token: {{ auth_token }}" -H "Content-Type: application/json" -d '{"title":"...","description":"...","status":"inbox","priority":"medium","assigned_agent_id":null,"depends_on_task_ids":[],"tag_ids":[],"custom_field_values":{}}'
+```
+
+- Never assign a task to yourself when you are the board lead; create it unassigned or assign it to a non-lead agent.
+{% endif %}

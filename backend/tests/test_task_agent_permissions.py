@@ -18,7 +18,7 @@ from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
-from app.schemas.tasks import TaskUpdate
+from app.schemas.tasks import TaskCommentCreate, TaskUpdate
 
 
 async def _make_engine() -> AsyncEngine:
@@ -167,6 +167,76 @@ async def test_non_lead_agent_can_update_status_for_unassigned_task() -> None:
 
             assert updated.status == "in_progress"
             assert updated.assigned_agent_id == actor_id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_board_lead_can_comment_on_task_assigned_to_self() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="lead",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    is_board_lead=True,
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="lead-owned task",
+                    description="",
+                    status="in_progress",
+                    assigned_agent_id=lead_id,
+                ),
+            )
+            await session.commit()
+
+            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            assert task is not None
+            lead = (await session.exec(select(Agent).where(col(Agent.id) == lead_id))).first()
+            assert lead is not None
+
+            event = await tasks_api.create_task_comment(
+                payload=TaskCommentCreate(message="Lead progress update."),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=lead),
+            )
+
+            assert event.message == "Lead progress update."
+            assert event.agent_id == lead_id
     finally:
         await engine.dispose()
 
