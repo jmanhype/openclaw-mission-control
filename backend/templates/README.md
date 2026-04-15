@@ -150,11 +150,7 @@ operations without path regex hacks:
 Example filter:
 
 ```bash
-curl -s "$BASE_URL/openapi.json" \
-  | jq -r '.paths | to_entries[] | .key as $path
-    | .value | to_entries[]
-    | select((.value.tags // []) | index("agent-lead"))
-    | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")"'
+curl -s "$BASE_URL/openapi.json" | jq -r '.paths | to_entries[] | .key as $path | .value | to_entries[] | select((.value.tags // []) | index("agent-lead")) | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")"'
 ```
 
 ## Safe change checklist

@@ -38,8 +38,7 @@ curl -fsS "{{ base_url }}/healthz" >/dev/null
 6) Immediately check in to Mission Control (do this before any task orchestration):
 
 ```bash
-curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
-  -H "X-Agent-Token: {{ auth_token }}"
+curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" -H "X-Agent-Token: {{ auth_token }}"
 ```
 
 7) Initialize current delivery status in `MEMORY.md`:
@@ -58,10 +57,7 @@ curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
 to Mission Control to mark the agent online:
 
 ```bash
-curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
-  -H "X-Agent-Token: {{ auth_token }}" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"{{ agent_name }}","board_id":"{{ board_id }}","status":"online"}'
+curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" -H "X-Agent-Token: {{ auth_token }}" -H "Content-Type: application/json" -d '{"name":"{{ agent_name }}","board_id":"{{ board_id }}","status":"online"}'
 ```
 
 8) Write a short note to `MEMORY.md` that bootstrap completed and list any

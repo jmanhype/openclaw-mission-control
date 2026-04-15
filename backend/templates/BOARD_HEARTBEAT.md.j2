@@ -33,6 +33,13 @@ jq -r '
 - All outputs must be sent to Mission Control via HTTP.
 - Always include: `X-Agent-Token: {{ auth_token }}`
 
+## Allowlist Mode Rule
+- This workspace may run with `tools.exec.security=allowlist`.
+- Do not use shell line continuations (`\` + newline), heredocs, or multi-line shell commands for API calls.
+- Prefer single-line commands only.
+- Keep `curl` invocations on one line.
+- If you need formatting, do it in markdown output, not in the shell command.
+
 ## Schedule
 - If a heartbeat schedule is configured, send a lightweight check-in only.
 - On first cycle after wake/bootstrap, run heartbeat check-in immediately (do not wait for cadence).
@@ -45,8 +52,7 @@ jq -r '
 - Startup check-in example:
 
 ```bash
-curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
-  -H "X-Agent-Token: {{ auth_token }}"
+curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" -H "X-Agent-Token: {{ auth_token }}"
 ```
 
 - If check-in fails due to 5xx/network, stop and retry next heartbeat.
@@ -97,29 +103,24 @@ curl -fsS "{{ base_url }}/openapi.json" -o /tmp/openapi.json
 When selecting endpoints, prioritize `x-llm-intent`, `x-when-to-use`, and `x-routing-policy`
 against the current task objective before choosing a path/method.
 
+## Allowlist Mode Rule
+- This workspace may run with `tools.exec.security=allowlist`.
+- Do not use shell line continuations (`\` + newline), heredocs, or multi-line shell commands for API calls.
+- Prefer single-line commands only.
+- Keep `curl` invocations on one line.
+- If you need formatting, do it in markdown output, not in the shell command.
+
 {% if is_lead %}
 Lead-focused operation filter:
 
 ```bash
-jq -r '
-  .paths | to_entries[] | .key as $path
-  | .value | to_entries[]
-  | select((.value.tags // []) | index("agent-lead"))
-  | ((.value.summary // "") | gsub("\\s+"; " ")) as $summary
-  | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")\t\(.value[\"x-llm-intent\"] // "-")\t\(.value[\"x-when-to-use\"] // [] | join(\" | \"))\t\(.value[\"x-routing-policy\"] // [] | join(\" | \"))\t\($summary)"
-' /tmp/openapi.json | sort
+jq -r '.paths | to_entries[] | .key as $path | .value | to_entries[] | select((.value.tags // []) | index("agent-lead")) | ((.value.summary // "") | gsub("\\s+"; " ")) as $summary | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")\t\(.value[\"x-llm-intent\"] // "-")\t\(.value[\"x-when-to-use\"] // [] | join(\" | \"))\t\(.value[\"x-routing-policy\"] // [] | join(\" | \"))\t\($summary)"' /tmp/openapi.json | sort
 ```
 {% else %}
 Worker-focused operation filter:
 
 ```bash
-jq -r '
-  .paths | to_entries[] | .key as $path
-  | .value | to_entries[]
-  | select((.value.tags // []) | index("agent-worker"))
-  | ((.value.summary // "") | gsub("\\s+"; " ")) as $summary
-  | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")\t\(.value[\"x-llm-intent\"] // "-")\t\(.value[\"x-when-to-use\"] // [] | join(\" | \"))\t\(.value[\"x-routing-policy\"] // [] | join(\" | \"))\t\($summary)"
-' /tmp/openapi.json | sort
+jq -r '.paths | to_entries[] | .key as $path | .value | to_entries[] | select((.value.tags // []) | index("agent-worker")) | ((.value.summary // "") | gsub("\\s+"; " ")) as $summary | "\(.key|ascii_upcase)\t\($path)\t\(.value.operationId // "-")\t\(.value[\"x-llm-intent\"] // "-")\t\(.value[\"x-when-to-use\"] // [] | join(\" | \"))\t\(.value[\"x-routing-policy\"] // [] | join(\" | \"))\t\($summary)"' /tmp/openapi.json | sort
 ```
 {% endif %}
 
