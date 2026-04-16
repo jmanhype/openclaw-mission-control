@@ -239,6 +239,32 @@ def _should_use_openclaw_cli(config: GatewayConfig) -> bool:
     return _find_openclaw_cli() is not None
 
 
+def _parse_cli_json_output(stdout_text: str) -> object:
+    """Parse CLI output that may contain extra human-readable lines around JSON."""
+
+    try:
+        return json.loads(stdout_text)
+    except ValueError:
+        pass
+
+    lines = [line.strip() for line in stdout_text.splitlines() if line.strip()]
+    for line in reversed(lines):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+
+    start_positions = [index for index, char in enumerate(stdout_text) if char in "[{"]
+    for start in start_positions:
+        candidate = stdout_text[start:].strip()
+        try:
+            return json.loads(candidate)
+        except ValueError:
+            continue
+
+    raise ValueError("No JSON payload found in CLI output")
+
+
 async def _openclaw_call_via_cli(
     method: str,
     params: dict[str, Any] | None,
@@ -280,7 +306,7 @@ async def _openclaw_call_via_cli(
         message = stderr_text or "openclaw CLI returned no output"
         raise OpenClawGatewayError(message)
     try:
-        return json.loads(stdout_text)
+        return _parse_cli_json_output(stdout_text)
     except ValueError as exc:
         logger.error("gateway.rpc.cli.invalid_json method=%s", method)
         message = stderr_text or stdout_text
