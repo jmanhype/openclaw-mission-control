@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import random
+from time import monotonic
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.openclaw.assigned_agent_rescue import rescue_stranded_assigned_agents
 from app.services.openclaw.lifecycle_queue import TASK_TYPE as LIFECYCLE_RECONCILE_TASK_TYPE
 from app.services.openclaw.lifecycle_queue import (
     requeue_lifecycle_queue_task,
@@ -23,6 +25,7 @@ from app.services.webhooks.queue import TASK_TYPE as WEBHOOK_TASK_TYPE
 
 logger = get_logger(__name__)
 _WORKER_BLOCK_TIMEOUT_SECONDS = 5.0
+_monotonic = monotonic
 
 
 @dataclass(frozen=True)
@@ -124,13 +127,37 @@ async def flush_queue(*, block: bool = False, block_timeout: float = 0) -> int:
     return processed
 
 
+async def _run_periodic_assigned_agent_rescue(*, next_run_at: float) -> float:
+    sweep_seconds = settings.assigned_agent_rescue_sweep_seconds
+    if sweep_seconds <= 0:
+        return float("inf")
+
+    now = _monotonic()
+    if now < next_run_at:
+        return next_run_at
+
+    rescued = await rescue_stranded_assigned_agents(
+        limit=settings.assigned_agent_rescue_batch_size,
+    )
+    if rescued > 0:
+        logger.warning(
+            "queue.worker.assigned_agent_rescue",
+            extra={"rescued_agents": rescued},
+        )
+    return _monotonic() + sweep_seconds
+
+
 async def _run_worker_loop() -> None:
+    next_agent_rescue_at = 0.0
     while True:
         try:
             await flush_queue(
                 block=True,
                 # Keep a finite timeout so scheduled tasks are periodically drained.
                 block_timeout=_WORKER_BLOCK_TIMEOUT_SECONDS,
+            )
+            next_agent_rescue_at = await _run_periodic_assigned_agent_rescue(
+                next_run_at=next_agent_rescue_at,
             )
         except Exception:
             logger.exception(

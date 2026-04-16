@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     rq_dispatch_max_retries: int = 3
     rq_dispatch_retry_base_seconds: float = 10.0
     rq_dispatch_retry_max_seconds: float = 120.0
+    assigned_agent_rescue_sweep_seconds: float = 30.0
+    assigned_agent_rescue_cooldown_seconds: float = 300.0
+    assigned_agent_rescue_batch_size: int = 10
 
     # OpenClaw gateway runtime compatibility
     gateway_min_version: str = "2026.02.9"
