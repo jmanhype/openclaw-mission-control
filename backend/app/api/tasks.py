@@ -60,7 +60,6 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
-from app.services.openclaw.provisioning_db import AgentLifecycleService
 from app.services.organizations import require_board_access
 from app.services.tags import (
     TagState,
@@ -566,13 +565,14 @@ async def _send_lead_task_message(
     session_key: str,
     config: GatewayClientConfig,
     message: str,
+    deliver: bool = True,
 ) -> OpenClawGatewayError | None:
     return await dispatch.try_send_agent_message(
         session_key=session_key,
         config=config,
         agent_name="Lead Agent",
         message=message,
-        deliver=False,
+        deliver=deliver,
     )
 
 
@@ -583,13 +583,14 @@ async def _send_agent_task_message(
     config: GatewayClientConfig,
     agent_name: str,
     message: str,
+    deliver: bool = True,
 ) -> OpenClawGatewayError | None:
     return await dispatch.try_send_agent_message(
         session_key=session_key,
         config=config,
         agent_name=agent_name,
         message=message,
-        deliver=False,
+        deliver=deliver,
     )
 
 
@@ -662,57 +663,15 @@ async def _latest_task_comment_by_agent(
     return (await session.exec(statement)).first()
 
 
-async def _wake_agent_online_for_task(
-    *,
-    session: AsyncSession,
-    board: Board,
-    task: Task,
-    agent: Agent,
-    reason: str,
-) -> None:
-    if not agent.openclaw_session_id:
-        return
-    service = AgentLifecycleService(session)
-    try:
-        await service.commit_heartbeat(agent=agent, status_value="online")
-        record_activity(
-            session,
-            event_type="task.assignee_woken",
-            message=(f"Assignee heartbeat set online ({reason}): {agent.name}."),
-            agent_id=agent.id,
-            task_id=task.id,
-            board_id=board.id,
-        )
-    except Exception as exc:  # pragma: no cover - best effort wake path
-        record_activity(
-            session,
-            event_type="task.assignee_wake_failed",
-            message=(f"Assignee wake failed ({reason}): {agent.name}. Error: {exc!s}"),
-            agent_id=agent.id,
-            task_id=task.id,
-            board_id=board.id,
-        )
-    await session.commit()
-
-
 async def _notify_agent_on_task_assign(
     *,
     session: AsyncSession,
     board: Board,
     task: Task,
     agent: Agent,
-    wake_assignee: bool = True,
 ) -> None:
     if not agent.openclaw_session_id:
         return
-    if wake_assignee:
-        await _wake_agent_online_for_task(
-            session=session,
-            board=board,
-            task=task,
-            agent=agent,
-            reason="assignment",
-        )
     dispatch = GatewayDispatchService(session)
     config = await dispatch.optional_gateway_config_for_board(board)
     if config is None:
@@ -2604,21 +2563,6 @@ async def _notify_task_update_assignment_changes(
         return
 
     assignment_changed = update.task.assigned_agent_id != update.previous_assigned
-    entered_in_progress = (
-        update.task.status == "in_progress" and update.previous_status != "in_progress"
-    )
-
-    if entered_in_progress and not assignment_changed:
-        current_board = await _board()
-        if current_board:
-            await _wake_agent_online_for_task(
-                session=session,
-                board=current_board,
-                task=update.task,
-                agent=assigned_agent,
-                reason="status_in_progress",
-            )
-
     if not assignment_changed:
         return
 
@@ -2654,7 +2598,6 @@ async def _notify_task_update_assignment_changes(
             board=current_board,
             task=update.task,
             agent=assigned_agent,
-            wake_assignee=True,
         )
 
 

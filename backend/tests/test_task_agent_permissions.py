@@ -986,7 +986,7 @@ async def test_non_lead_agent_moves_to_review_without_comment_or_recent_comment_
 
 
 @pytest.mark.asyncio
-async def test_lead_assignment_and_in_progress_wakes_assignee_once(
+async def test_lead_assignment_and_in_progress_notifies_assignee_without_synthetic_presence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _fake_send_agent_task_message(**_: Any) -> str | None:
@@ -1075,8 +1075,8 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
                 await session.exec(select(Agent).where(col(Agent.id) == worker_id))
             ).first()
             assert reloaded_worker is not None
-            assert reloaded_worker.status == "online"
-            assert reloaded_worker.last_seen_at is not None
+            assert reloaded_worker.status == "offline"
+            assert reloaded_worker.last_seen_at is None
 
             wake_events = (
                 await session.exec(
@@ -1085,15 +1085,22 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
                     .where(col(ActivityEvent.event_type) == "task.assignee_woken"),
                 )
             ).all()
-            assert len(wake_events) == 1
-            assert wake_events[0].message is not None
-            assert "(assignment)" in wake_events[0].message
+            assert wake_events == []
+
+            notified_events = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.task_id) == task_id)
+                    .where(col(ActivityEvent.event_type) == "task.assignee_notified"),
+                )
+            ).all()
+            assert len(notified_events) == 1
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
+async def test_entering_in_progress_with_existing_assignee_does_not_fake_presence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _fake_send_agent_task_message(**_: Any) -> str | None:
@@ -1170,8 +1177,8 @@ async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
                 await session.exec(select(Agent).where(col(Agent.id) == worker_id))
             ).first()
             assert reloaded_worker is not None
-            assert reloaded_worker.status == "online"
-            assert reloaded_worker.last_seen_at is not None
+            assert reloaded_worker.status == "offline"
+            assert reloaded_worker.last_seen_at is None
 
             wake_events = (
                 await session.exec(
@@ -1180,8 +1187,46 @@ async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
                     .where(col(ActivityEvent.event_type) == "task.assignee_woken"),
                 )
             ).all()
-            assert len(wake_events) == 1
-            assert wake_events[0].message is not None
-            assert "(status_in_progress)" in wake_events[0].message
+            assert wake_events == []
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_send_agent_task_message_delivers_immediately_by_default() -> None:
+    captured: dict[str, Any] = {}
+
+    class _FakeDispatch:
+        async def try_send_agent_message(
+            self,
+            *,
+            session_key: str,
+            config: Any,
+            agent_name: str,
+            message: str,
+            deliver: bool = False,
+        ) -> None:
+            captured.update(
+                {
+                    "session_key": session_key,
+                    "config": config,
+                    "agent_name": agent_name,
+                    "message": message,
+                    "deliver": deliver,
+                },
+            )
+            return None
+
+    result = await tasks_api._send_agent_task_message(
+        dispatch=_FakeDispatch(),
+        session_key="session-worker",
+        config=object(),
+        agent_name="worker",
+        message="TASK ASSIGNED",
+    )
+
+    assert result is None
+    assert captured["session_key"] == "session-worker"
+    assert captured["agent_name"] == "worker"
+    assert captured["message"] == "TASK ASSIGNED"
+    assert captured["deliver"] is True
