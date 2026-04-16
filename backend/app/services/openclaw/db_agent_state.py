@@ -83,3 +83,16 @@ def mark_provision_complete(
     agent.provision_requested_at = None
     agent.provision_action = None
     agent.updated_at = now
+
+
+def mark_provision_failed(
+    agent: Agent,
+    *,
+    previous_status: str,
+) -> None:
+    """Clear pending lifecycle state after a failed gateway lifecycle attempt."""
+
+    agent.status = previous_status
+    agent.provision_requested_at = None
+    agent.provision_action = None
+    agent.updated_at = utcnow()

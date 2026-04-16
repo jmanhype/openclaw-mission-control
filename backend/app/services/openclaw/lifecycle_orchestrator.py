@@ -18,6 +18,7 @@ from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.services.openclaw.constants import CHECKIN_DEADLINE_AFTER_WAKE
 from app.services.openclaw.db_agent_state import (
+    mark_provision_failed,
     mark_provision_complete,
     mark_provision_requested,
     mint_agent_token,
@@ -86,6 +87,7 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 )
 
         raw_token = auth_token or mint_agent_token(locked)
+        previous_status = locked.status
         mark_provision_requested(
             locked,
             action=action,
@@ -120,8 +122,8 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 wakeup_verb=wakeup_verb,
             )
         except OpenClawGatewayError as exc:
+            mark_provision_failed(locked, previous_status=previous_status)
             locked.last_provision_error = str(exc)
-            locked.updated_at = utcnow()
             self.session.add(locked)
             await self.session.commit()
             await self.session.refresh(locked)
@@ -132,8 +134,8 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 ) from exc
             return locked
         except (OSError, RuntimeError, ValueError) as exc:
+            mark_provision_failed(locked, previous_status=previous_status)
             locked.last_provision_error = str(exc)
-            locked.updated_at = utcnow()
             self.session.add(locked)
             await self.session.commit()
             await self.session.refresh(locked)

@@ -81,6 +81,25 @@ def test_should_attempt_assigned_agent_rescue_allows_expired_cycle_after_cooldow
     )
 
 
+def test_should_attempt_assigned_agent_rescue_retries_stale_updating_agent() -> None:
+    now = utcnow()
+    agent = _agent_for_rescue(
+        status="updating",
+        last_seen_at=now - timedelta(minutes=20),
+        last_wake_sent_at=now - timedelta(minutes=10),
+        checkin_deadline_at=now - timedelta(minutes=9),
+    )
+
+    assert (
+        assigned_agent_rescue._should_attempt_assigned_agent_rescue(
+            agent,
+            cooldown=timedelta(minutes=5),
+            now=now,
+        )
+        is True
+    )
+
+
 @pytest.mark.asyncio
 async def test_rescue_stranded_assigned_agents_retriggers_stale_assignee(
     monkeypatch: pytest.MonkeyPatch,

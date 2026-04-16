@@ -23,7 +23,7 @@ from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestra
 
 logger = get_logger(__name__)
 _ACTIVE_ASSIGNED_TASK_STATUSES: Final[tuple[str, ...]] = ("in_progress", "review")
-_IGNORED_AGENT_STATUSES: Final[frozenset[str]] = frozenset({"deleting", "updating"})
+_IGNORED_AGENT_STATUSES: Final[frozenset[str]] = frozenset({"deleting"})
 
 _SessionFactory = Callable[[], AsyncSession]
 
