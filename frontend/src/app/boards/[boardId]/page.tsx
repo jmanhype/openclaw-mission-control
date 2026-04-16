@@ -70,7 +70,9 @@ import {
 } from "@/api/generated/boards/boards";
 import {
   createBoardMemoryApiV1BoardsBoardIdMemoryPost,
+  type listBoardMemoryApiV1BoardsBoardIdMemoryGetResponse,
   streamBoardMemoryApiV1BoardsBoardIdMemoryStreamGet,
+  useListBoardMemoryApiV1BoardsBoardIdMemoryGet,
 } from "@/api/generated/board-memory/board-memory";
 import {
   type getMyMembershipApiV1OrganizationsMeMemberGetResponse,
@@ -283,6 +285,36 @@ const toLiveFeedFromBoardChat = (memory: BoardChatMessage): LiveFeedItem => {
     title: isCommand ? "Board command" : "Board chat",
     event_type: isCommand ? "board.command" : "board.chat",
   };
+};
+
+const isBoardChatMemory = (memory?: BoardChatMessage | null): boolean => {
+  if (!memory) return false;
+  if (typeof memory.is_chat === "boolean") return memory.is_chat;
+  return memory.tags?.includes("chat") ?? false;
+};
+
+const mergeBoardChatMessages = (
+  prev: BoardChatMessage[],
+  next: BoardChatMessage[],
+): BoardChatMessage[] => {
+  const byId = new Map<string, BoardChatMessage>();
+  prev.forEach((item) => {
+    if (isBoardChatMemory(item)) {
+      byId.set(item.id, item);
+    }
+  });
+  next.forEach((item) => {
+    if (isBoardChatMemory(item)) {
+      byId.set(item.id, item);
+    }
+  });
+  const merged = Array.from(byId.values());
+  merged.sort((a, b) => {
+    const aTime = apiDatetimeToMs(a.created_at) ?? 0;
+    const bTime = apiDatetimeToMs(b.created_at) ?? 0;
+    return aTime - bTime;
+  });
+  return merged;
 };
 
 const normalizeAgentStatus = (value?: string | null): string => {
@@ -897,6 +929,23 @@ export default function BoardDetailPage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const chatMessagesRef = useRef<BoardChatMessage[]>([]);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatHistoryQuery =
+    useListBoardMemoryApiV1BoardsBoardIdMemoryGet<
+      listBoardMemoryApiV1BoardsBoardIdMemoryGetResponse,
+      ApiError
+    >(
+      boardId ?? "",
+      { limit: 200, is_chat: true },
+      {
+        query: {
+          enabled: Boolean(isSignedIn && boardId && isChatOpen),
+          refetchOnMount: "always",
+          refetchOnWindowFocus: "always",
+          refetchInterval: isPageActive && isChatOpen ? 15000 : false,
+          retry: false,
+        },
+      },
+    );
   const [isAgentsControlDialogOpen, setIsAgentsControlDialogOpen] =
     useState(false);
   const [agentsControlAction, setAgentsControlAction] = useState<
@@ -1332,6 +1381,13 @@ export default function BoardDetailPage() {
   }, [chatMessages]);
 
   useEffect(() => {
+    if (!isChatOpen) return;
+    if (chatHistoryQuery.data?.status !== 200) return;
+    const items = chatHistoryQuery.data.data.items ?? [];
+    setChatMessages((prev) => mergeBoardChatMessages(prev, items));
+  }, [chatHistoryQuery.data, isChatOpen]);
+
+  useEffect(() => {
     liveFeedRef.current = liveFeed;
   }, [liveFeed]);
 
@@ -1437,21 +1493,12 @@ export default function BoardDetailPage() {
                 const payload = JSON.parse(data) as {
                   memory?: BoardChatMessage;
                 };
-                if (payload.memory?.tags?.includes("chat")) {
-                  pushLiveFeed(toLiveFeedFromBoardChat(payload.memory));
-                  setChatMessages((prev) => {
-                    const exists = prev.some(
-                      (item) => item.id === payload.memory?.id,
-                    );
-                    if (exists) return prev;
-                    const next = [...prev, payload.memory as BoardChatMessage];
-                    next.sort((a, b) => {
-                      const aTime = apiDatetimeToMs(a.created_at) ?? 0;
-                      const bTime = apiDatetimeToMs(b.created_at) ?? 0;
-                      return aTime - bTime;
-                    });
-                    return next;
-                  });
+                const memory = payload.memory;
+                if (memory && isBoardChatMemory(memory)) {
+                  pushLiveFeed(toLiveFeedFromBoardChat(memory));
+                  setChatMessages((prev) =>
+                    mergeBoardChatMessages(prev, [memory]),
+                  );
                 }
               } catch {
                 // ignore malformed
@@ -2060,19 +2107,9 @@ export default function BoardDetailPage() {
           throw new Error("Unable to send message.");
         }
         const created = result.data;
-        if (created.tags?.includes("chat")) {
+        if (isBoardChatMemory(created)) {
           pushLiveFeed(toLiveFeedFromBoardChat(created));
-          setChatMessages((prev) => {
-            const exists = prev.some((item) => item.id === created.id);
-            if (exists) return prev;
-            const next = [...prev, created];
-            next.sort((a, b) => {
-              const aTime = apiDatetimeToMs(a.created_at) ?? 0;
-              const bTime = apiDatetimeToMs(b.created_at) ?? 0;
-              return aTime - bTime;
-            });
-            return next;
-          });
+          setChatMessages((prev) => mergeBoardChatMessages(prev, [created]));
         }
         return { ok: true, error: null };
       } catch (err) {
