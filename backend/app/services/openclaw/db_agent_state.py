@@ -7,7 +7,7 @@ from typing import Any, Literal
 from app.core.agent_tokens import generate_agent_token, hash_agent_token
 from app.core.time import utcnow
 from app.models.agents import Agent
-from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
+from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG, OFFLINE_AFTER
 
 
 def resolve_heartbeat_config(
@@ -92,7 +92,16 @@ def mark_provision_failed(
 ) -> None:
     """Clear pending lifecycle state after a failed gateway lifecycle attempt."""
 
-    agent.status = previous_status
+    now = utcnow()
+    if previous_status in {"provisioning", "updating"}:
+        if agent.last_seen_at is None:
+            agent.status = "provisioning"
+        elif now - agent.last_seen_at > OFFLINE_AFTER:
+            agent.status = "offline"
+        else:
+            agent.status = "online"
+    else:
+        agent.status = previous_status
     agent.provision_requested_at = None
     agent.provision_action = None
-    agent.updated_at = utcnow()
+    agent.updated_at = now

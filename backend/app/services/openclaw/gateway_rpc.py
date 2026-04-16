@@ -247,18 +247,20 @@ def _parse_cli_json_output(stdout_text: str) -> object:
     except ValueError:
         pass
 
-    lines = [line.strip() for line in stdout_text.splitlines() if line.strip()]
-    for line in reversed(lines):
-        try:
-            return json.loads(line)
-        except ValueError:
-            continue
-
     start_positions = [index for index, char in enumerate(stdout_text) if char in "[{"]
     for start in start_positions:
         candidate = stdout_text[start:].strip()
         try:
             return json.loads(candidate)
+        except ValueError:
+            continue
+
+    lines = [line.strip() for line in stdout_text.splitlines() if line.strip()]
+    for line in reversed(lines):
+        if not line.startswith(("{", "[")):
+            continue
+        try:
+            return json.loads(line)
         except ValueError:
             continue
 

@@ -136,3 +136,90 @@ async def test_run_lifecycle_gateway_error_restores_agent_state(
             )
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_lifecycle_gateway_error_unwedges_stale_updating_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _fake_apply_agent_lifecycle(
+        self: lifecycle_orchestrator.OpenClawGatewayProvisioner,
+        **_kwargs: object,
+    ) -> None:
+        _ = self
+        raise OpenClawGatewayError("config.get returned invalid payload")
+
+    monkeypatch.setattr(
+        lifecycle_orchestrator.OpenClawGatewayProvisioner,
+        "apply_agent_lifecycle",
+        _fake_apply_agent_lifecycle,
+    )
+
+    now = utcnow()
+    org_id = uuid4()
+    gateway_id = uuid4()
+    board_id = uuid4()
+    agent_id = uuid4()
+
+    try:
+        async with session_maker() as session:
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="lead",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="updating",
+                    last_seen_at=now - timedelta(minutes=20),
+                ),
+            )
+            await session.commit()
+
+            gateway = await Gateway.objects.by_id(gateway_id).first(session)
+            board = await Board.objects.by_id(board_id).first(session)
+            assert gateway is not None
+            assert board is not None
+
+            orchestrator = lifecycle_orchestrator.AgentLifecycleOrchestrator(session)
+            recovered = await orchestrator.run_lifecycle(
+                gateway=gateway,
+                agent_id=agent_id,
+                board=board,
+                user=None,
+                action="update",
+                wake=True,
+                raise_gateway_errors=False,
+            )
+
+            assert recovered.id == agent_id
+
+            agent = await Agent.objects.by_id(agent_id).first(session)
+            assert agent is not None
+            assert agent.status == "offline"
+            assert agent.provision_requested_at is None
+            assert agent.provision_action is None
+            assert agent.last_provision_error == "config.get returned invalid payload"
+    finally:
+        await engine.dispose()
