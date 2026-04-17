@@ -40,6 +40,7 @@ from app.models.task_custom_fields import (
 )
 from app.models.task_dependencies import TaskDependency
 from app.models.task_fingerprints import TaskFingerprint
+from app.models.task_packages import TaskPackage
 from app.models.tasks import Task
 from app.schemas.activity_events import ActivityEventRead
 from app.schemas.common import OkResponse
@@ -50,6 +51,7 @@ from app.schemas.task_custom_fields import (
     TaskCustomFieldValues,
     validate_custom_field_value,
 )
+from app.schemas.task_packages import TaskPackageRead, TaskPackageUpsert
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
 from app.services.activity_log import record_activity
 from app.services.approval_task_links import (
@@ -1625,6 +1627,12 @@ async def delete_task_and_related_records(
         col(TaskFingerprint.task_id) == task.id,
         commit=False,
     )
+    await crud.delete_where(
+        session,
+        TaskPackage,
+        col(TaskPackage.task_id) == task.id,
+        commit=False,
+    )
 
     primary_approvals = list(
         await Approval.objects.filter(col(Approval.task_id) == task.id).all(session),
@@ -1668,6 +1676,81 @@ async def delete_task_and_related_records(
     )
     await session.delete(task)
     await session.commit()
+
+
+async def _validate_task_package_access(
+    session: AsyncSession,
+    *,
+    task: Task,
+    actor: ActorContext,
+) -> None:
+    if task.board_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+    if actor.actor_type == "user" and actor.user is not None:
+        board = await Board.objects.by_id(task.board_id).first(session)
+        if board is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        await require_board_access(session, user=actor.user, board=board, write=True)
+
+
+async def _record_task_package_activity(
+    session: AsyncSession,
+    *,
+    task: Task,
+    actor: ActorContext,
+    created: bool,
+) -> None:
+    record_activity(
+        session,
+        event_type="task.updated",
+        message="Task package created." if created else "Task package updated.",
+        task_id=task.id,
+        board_id=task.board_id,
+        agent_id=_comment_actor_id(actor),
+    )
+    await session.commit()
+
+
+@router.get("/{task_id}/package", response_model=TaskPackageRead)
+async def get_task_package(
+    task: Task = TASK_DEP,
+    session: AsyncSession = SESSION_DEP,
+    _actor: ActorContext = ACTOR_DEP,
+) -> TaskPackage:
+    """Return the structured task package for a task."""
+    task_package = await TaskPackage.objects.filter_by(task_id=task.id).first(session)
+    if task_package is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task package not found.")
+    return task_package
+
+
+@router.put("/{task_id}/package", response_model=TaskPackageRead)
+async def upsert_task_package(
+    payload: TaskPackageUpsert,
+    task: Task = TASK_DEP,
+    session: AsyncSession = SESSION_DEP,
+    actor: ActorContext = ACTOR_DEP,
+) -> TaskPackage:
+    """Create or replace the structured task package for a task."""
+    await _validate_task_package_access(session, task=task, actor=actor)
+    if task.board_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+    task_package = await TaskPackage.objects.filter_by(task_id=task.id).first(session)
+    created = task_package is None
+    if task_package is None:
+        task_package = TaskPackage(board_id=task.board_id, task_id=task.id)
+    package_data = payload.model_dump()
+    for field_name, value in package_data.items():
+        setattr(task_package, field_name, value)
+    task_package.board_id = task.board_id
+    task_package.task_id = task.id
+    task_package.updated_by_agent_id = _comment_actor_id(actor)
+    task_package.updated_at = utcnow()
+    session.add(task_package)
+    await session.commit()
+    await session.refresh(task_package)
+    await _record_task_package_activity(session, task=task, actor=actor, created=created)
+    return task_package
 
 
 @router.delete("/{task_id}", response_model=OkResponse)
