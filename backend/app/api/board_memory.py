@@ -211,6 +211,7 @@ async def _notify_chat_targets(
             config=config,
             agent_name=agent.name,
             message=message,
+            deliver=True,
         )
         if error is not None:
             continue
