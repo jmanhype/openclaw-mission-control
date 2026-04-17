@@ -1014,11 +1014,14 @@ async def list_task_comments(
     """List task comments visible to the authenticated agent.
 
     Read this before posting updates to avoid duplicate or low-value comments.
+    Latest comments are returned first so agents see the freshest corrections,
+    blockers, and execution instructions without paging through stale history.
     """
     _guard_task_access(agent_ctx, task)
     return await tasks_api.list_task_comments(
         task=task,
         session=session,
+        newest_first=True,
     )
 
 

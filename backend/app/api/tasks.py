@@ -1696,13 +1696,23 @@ async def delete_task(
 async def list_task_comments(
     task: Task = TASK_DEP,
     session: AsyncSession = SESSION_DEP,
+    *,
+    newest_first: bool = False,
 ) -> LimitOffsetPage[TaskCommentRead]:
-    """List comments for a task in chronological order."""
+    """List comments for a task.
+
+    Human/UI task views stay chronological by default. Agent discovery paths can
+    opt into newest-first ordering so the first page contains the freshest
+    instructions instead of stale historical context.
+    """
+    order_clause = desc(col(ActivityEvent.created_at)) if newest_first else asc(
+        col(ActivityEvent.created_at)
+    )
     statement = (
         select(ActivityEvent)
         .where(col(ActivityEvent.task_id) == task.id)
         .where(col(ActivityEvent.event_type) == "task.comment")
-        .order_by(asc(col(ActivityEvent.created_at)))
+        .order_by(order_clause)
     )
     return await paginate(session, statement)
 

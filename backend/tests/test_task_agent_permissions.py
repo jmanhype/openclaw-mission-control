@@ -10,7 +10,9 @@ from sqlmodel import SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api import tasks as tasks_api
+from app.api import agent as agent_api
 from app.api.deps import ActorContext
+from app.core.agent_auth import AgentAuthContext
 from app.core.time import utcnow
 from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
@@ -237,6 +239,182 @@ async def test_board_lead_can_comment_on_task_assigned_to_self() -> None:
 
             assert event.message == "Lead progress update."
             assert event.agent_id == lead_id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_task_comments_supports_newest_first_for_agent_reads() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="lead",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    is_board_lead=True,
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="comment ordering",
+                    description="",
+                    status="in_progress",
+                    assigned_agent_id=lead_id,
+                ),
+            )
+            await session.commit()
+
+            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            assert task is not None
+            lead = (await session.exec(select(Agent).where(col(Agent.id) == lead_id))).first()
+            assert lead is not None
+
+            await tasks_api.create_task_comment(
+                payload=TaskCommentCreate(message="oldest"),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=lead),
+            )
+            await tasks_api.create_task_comment(
+                payload=TaskCommentCreate(message="newest"),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=lead),
+            )
+
+            async def _fake_paginate(session: AsyncSession, statement, transformer=None):
+                items = list(await session.exec(statement))
+                return type("Page", (), {"items": items})()
+
+            original_paginate = tasks_api.paginate
+            tasks_api.paginate = _fake_paginate  # type: ignore[assignment]
+            try:
+                chronological = await tasks_api.list_task_comments(task=task, session=session)
+                newest_first = await tasks_api.list_task_comments(
+                    task=task,
+                    session=session,
+                    newest_first=True,
+                )
+            finally:
+                tasks_api.paginate = original_paginate  # type: ignore[assignment]
+
+            assert [item.message for item in chronological.items] == ["oldest", "newest"]
+            assert [item.message for item in newest_first.items] == ["newest", "oldest"]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_task_comment_discovery_reads_newest_first() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="lead",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    is_board_lead=True,
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="agent read ordering",
+                    description="",
+                    status="in_progress",
+                    assigned_agent_id=lead_id,
+                ),
+            )
+            await session.commit()
+
+            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            assert task is not None
+            lead = (await session.exec(select(Agent).where(col(Agent.id) == lead_id))).first()
+            assert lead is not None
+
+            captured: dict[str, object] = {}
+
+            async def _fake_list_task_comments(*, task: Task, session: AsyncSession, newest_first: bool = False):
+                captured["task_id"] = task.id
+                captured["newest_first"] = newest_first
+                captured["session"] = session
+                return type("Page", (), {"items": []})()
+
+            original = tasks_api.list_task_comments
+            tasks_api.list_task_comments = _fake_list_task_comments  # type: ignore[assignment]
+            try:
+                result = await agent_api.list_task_comments(
+                    task=task,
+                    session=session,
+                    agent_ctx=AgentAuthContext(actor_type="agent", agent=lead),
+                )
+            finally:
+                tasks_api.list_task_comments = original  # type: ignore[assignment]
+
+            assert captured["task_id"] == task.id
+            assert captured["newest_first"] is True
+            assert captured["session"] is session
+            assert result.items == []
     finally:
         await engine.dispose()
 
