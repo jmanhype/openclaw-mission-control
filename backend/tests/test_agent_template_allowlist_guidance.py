@@ -50,7 +50,7 @@ def test_lead_templates_include_allowlist_guidance_and_avoid_shell_line_continua
     rendered = agent_provisioning._render_agent_files(
         context,
         agent,
-        {"TOOLS.md", "HEARTBEAT.md", "BOOTSTRAP.md"},
+        {"AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "BOOTSTRAP.md"},
         include_bootstrap=True,
         template_overrides=dict(agent_provisioning.BOARD_SHARED_TEMPLATE_MAP),
     )
@@ -61,5 +61,20 @@ def test_lead_templates_include_allowlist_guidance_and_avoid_shell_line_continua
     assert '"message":"' in rendered["TOOLS.md"]
     assert '"assigned_agent_id":null' in rendered["TOOLS.md"]
     assert "Never assign a task to yourself when you are the board lead" in rendered["TOOLS.md"]
+    assert "External target failures (`4xx`, `5xx`, auth, allowlist/exec denial, provider `429`, missing dependency) are blocker evidence and must be reported in the same cycle." in rendered["HEARTBEAT.md"]
+    assert "If task-comment write fails, post the same blocker in board chat and say the task-comment endpoint failed." in rendered["HEARTBEAT.md"]
+    assert "For remote execution claims (`submitted`, `running`, `continuing`, `in progress`, `unblocked`), include fresh execution evidence from the target system in the same cycle: prompt/job/build id plus exact output path." in rendered["HEARTBEAT.md"]
+    assert "After approval or unblock, the next execution update must be either a fresh execution id from the target system or an exact blocker. Status-only continuation claims are invalid." in rendered["HEARTBEAT.md"]
+    assert "Artifact existence is not proof of success." in rendered["HEARTBEAT.md"]
+    assert "Before moving to `review`, post both proof of execution and proof of quality." in rendered["HEARTBEAT.md"]
+    assert "For first-frame/last-frame or chained-segment workflows, record exact first/last keyframe paths for each segment" in rendered["HEARTBEAT.md"]
+    assert "If execution, delegation, or tooling fails, publish the blocker immediately with exact failing system, error, and smallest next step." in rendered["AGENTS.md"]
+    assert "Do not silently retry the same failing path more than once without posting blocker evidence." in rendered["AGENTS.md"]
+    assert "If you say remote work is `submitted`, `running`, `continuing`, or `unblocked`, include a fresh target-system execution id and exact output path in that same update." in rendered["AGENTS.md"]
+    assert "After human approval/unblock, your next remote-execution update must be either a new execution id or an exact blocker, never status-only continuation language." in rendered["AGENTS.md"]
+    assert "For multi-step media, scene, or other staged tasks, maintain one reusable scene/run package" in rendered["AGENTS.md"]
+    assert "Artifact existence, prompt submission, or successful encode is not enough to claim success." in rendered["AGENTS.md"]
+    assert "### Package / Artifact Set" in rendered["AGENTS.md"]
+    assert "### Quality Gate" in rendered["AGENTS.md"]
     assert "\\\n" not in rendered["HEARTBEAT.md"]
     assert "\\\n" not in rendered["BOOTSTRAP.md"]

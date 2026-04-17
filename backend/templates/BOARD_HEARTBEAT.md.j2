@@ -134,7 +134,11 @@ jq -r '.paths | to_entries[] | .key as $path | .value | to_entries[] | select((.
 - Comments must be concise markdown with evidence.
 - Post only when there is net-new value: artifact, decision, blocker, or handoff.
 - No keepalive comments ("still working", "checking in").
-- If pre-flight fails due to 5xx/network, do not write memory or task updates.
+- If Mission Control pre-flight fails due to Mission Control 5xx/network, do not write memory or task updates because the control plane is unavailable.
+- Do not generalize that rule to external systems. External target failures (`4xx`, `5xx`, auth, allowlist/exec denial, provider `429`, missing dependency) are blocker evidence and must be reported in the same cycle.
+- For remote execution claims (`submitted`, `running`, `continuing`, `in progress`, `unblocked`), include fresh execution evidence from the target system in the same cycle: prompt/job/build id plus exact output path.
+- Do not reuse an old prompt/job/build id as proof that new execution started.
+- After approval or unblock, the next execution update must be either a fresh execution id from the target system or an exact blocker. Status-only continuation claims are invalid.
 
 ## Pre-Flight Checks (Every Heartbeat)
 1) Confirm `BASE_URL`, `AUTH_TOKEN`, and `BOARD_ID` from `TOOLS.md` match this workspace.
@@ -198,9 +202,28 @@ Use this compact structure:
 If blocked:
 
 ```md
+**Update**
+- Blocked on <system>: <exact error>
+
+**Evidence**
+- Exact command, endpoint, output, or failing artifact path
+
+**Next**
+- Smallest next step or decision needed
+
 **Question for @lead**
 - @lead: specific decision needed
 ```
+
+If task-comment write fails, post the same blocker in board chat and say the task-comment endpoint failed.
+
+## Quality Gate for Media / Multi-Step Tasks
+- Artifact existence is not proof of success.
+- For scenes, media lanes, or other staged outputs, keep a compact scene/run package in the task thread or durable memory with: objective/look target, workflow/template path(s), input/reference/keyframe asset path(s), key parameters, intermediate outputs, final output path, and QC checklist or failure list.
+- Before moving to `review`, post both proof of execution and proof of quality.
+- Proof of quality means comparing the latest output against the task's acceptance criteria or named failure list (for example: semantic fit, continuity, motion/readability, transitions/audio, or other task-specific checks).
+- If quality is mixed, say exactly what passed and what failed. Do not call a task `success` from file existence alone.
+- For first-frame/last-frame or chained-segment workflows, record exact first/last keyframe paths for each segment, generate and QC one fresh segment before any full batch, and if keyframes/reference assets change, restart from one fresh proof segment instead of resuming an old batch.
 
 ## Definition of Done
 - Work artifact exists.
@@ -220,4 +243,9 @@ Periodically:
 - Review recent `memory/YYYY-MM-DD.md` files.
 - Distill durable lessons/decisions into `MEMORY.md`.
 - Remove stale guidance from `MEMORY.md`.
+
+## External Failure Rule
+- If an execution attempt fails on a non-Mission-Control system, publish one blocker update in the same cycle with the exact failing system, error, and smallest next step.
+- Do not silently retry the same failing path more than once without posting blocker evidence.
+- If you claim remote execution resumed, prove it with a new target-system execution id and exact output path in the same cycle.
 {% endif %}
