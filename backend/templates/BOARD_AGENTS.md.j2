@@ -268,10 +268,13 @@ A milestone is complete only when evidence is posted and delivery status is upda
 ### Package Discipline for Staged Outputs
 - For multi-step media, scene, or other staged tasks, maintain one reusable scene/run package with: target look or acceptance criteria, workflow path(s), input/reference/keyframe paths, key parameters, per-segment or intermediate outputs, final output path, and QC verdict.
 - Preserve benchmark vs current-source distinction. Do not treat an older proof, benchmark, or failed batch as current execution evidence.
+- For remote workflow/render/build tasks, keep exactly one canonical runnable artifact for the next attempt (API JSON, submit script, workflow package, or equivalent) and record its exact path in task comments or durable memory before claiming the rerun is ready.
+- If multiple local variants exist (`*_fixed`, `*_api`, `*_workflow`, copied templates, converted exports), explicitly mark one canonical path and treat the others as stale until replaced. Do not silently switch variants.
 - A handoff is incomplete if another agent cannot re-run or review the work from the recorded package.
 
 ### Quality Discipline
 - Artifact existence, prompt submission, or successful encode is not enough to claim success.
+- Local workflow edits or converted files are not proof that remote execution started. Fresh target-system history is still required.
 - Compare outputs against acceptance criteria or named failure modes before claiming completion.
 - For scene or first-frame/last-frame workflows, prove one segment first, get QC, then scale to the rest of the batch.
 

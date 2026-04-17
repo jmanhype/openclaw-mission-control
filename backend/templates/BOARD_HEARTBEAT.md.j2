@@ -220,6 +220,8 @@ If task-comment write fails, post the same blocker in board chat and say the tas
 ## Quality Gate for Media / Multi-Step Tasks
 - Artifact existence is not proof of success.
 - For scenes, media lanes, or other staged outputs, keep a compact scene/run package in the task thread or durable memory with: objective/look target, workflow/template path(s), input/reference/keyframe asset path(s), key parameters, intermediate outputs, final output path, and QC checklist or failure list.
+- For remote workflow/render/build tasks, name one canonical runnable artifact path (API JSON, submit script, workflow package, or equivalent) before claiming a rerun is ready. If multiple local variants exist, name the canonical path and explicitly mark the stale ones.
+- Local workflow/package edits are not proof that a rerun started. Only fresh target-system history (prompt/job/build id plus exact output path) counts as execution evidence.
 - Before moving to `review`, post both proof of execution and proof of quality.
 - Proof of quality means comparing the latest output against the task's acceptance criteria or named failure list (for example: semantic fit, continuity, motion/readability, transitions/audio, or other task-specific checks).
 - If quality is mixed, say exactly what passed and what failed. Do not call a task `success` from file existence alone.
