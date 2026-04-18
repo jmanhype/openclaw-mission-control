@@ -38,6 +38,15 @@ class TaskPackageUpsert(TaskPackageBase):
     """Payload for creating or replacing a task package."""
 
 
+class TaskPackageSceneExecutionRequest(SQLModel):
+    """Optional runtime overrides for executing a stored scene package."""
+
+    comfy_base_url: str | None = None
+    comfy_host: str | None = None
+    comfy_port: int | None = Field(default=None, ge=1, le=65535)
+    base_output_dir: str | None = None
+
+
 class TaskPackageRead(TaskPackageBase):
     """Serialized task package payload."""
 

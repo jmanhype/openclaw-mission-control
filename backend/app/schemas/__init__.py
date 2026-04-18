@@ -58,6 +58,7 @@ from app.schemas.souls_directory import (
     SoulsDirectorySoulRef,
 )
 from app.schemas.tags import TagCreate, TagRead, TagRef, TagUpdate
+from app.schemas.task_packages import TaskPackageRead, TaskPackageSceneExecutionRequest, TaskPackageUpsert
 from app.schemas.tasks import TaskCreate, TaskRead, TaskUpdate
 from app.schemas.users import UserCreate, UserRead, UserUpdate
 
@@ -121,6 +122,9 @@ __all__ = [
     "TagRead",
     "TagRef",
     "TagUpdate",
+    "TaskPackageRead",
+    "TaskPackageSceneExecutionRequest",
+    "TaskPackageUpsert",
     "TaskCreate",
     "TaskRead",
     "TaskUpdate",
