@@ -1716,12 +1716,12 @@ async def get_task_package(
     task: Task = TASK_DEP,
     session: AsyncSession = SESSION_DEP,
     _actor: ActorContext = ACTOR_DEP,
-) -> TaskPackageRead:
+) -> TaskPackage:
     """Return the structured task package for a task."""
     task_package = await TaskPackage.objects.filter_by(task_id=task.id).first(session)
     if task_package is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task package not found.")
-    return TaskPackageRead.model_validate(task_package)
+    return task_package
 
 
 @router.put("/{task_id}/package", response_model=TaskPackageRead)
@@ -1730,7 +1730,7 @@ async def upsert_task_package(
     task: Task = TASK_DEP,
     session: AsyncSession = SESSION_DEP,
     actor: ActorContext = ACTOR_DEP,
-) -> TaskPackageRead:
+) -> TaskPackage:
     """Create or replace the structured task package for a task."""
     await _validate_task_package_access(session, task=task, actor=actor)
     if task.board_id is None:
@@ -1750,7 +1750,7 @@ async def upsert_task_package(
     await session.commit()
     await session.refresh(task_package)
     await _record_task_package_activity(session, task=task, actor=actor, created=created)
-    return TaskPackageRead.model_validate(task_package)
+    return task_package
 
 
 @router.delete("/{task_id}", response_model=OkResponse)

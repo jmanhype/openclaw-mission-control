@@ -7,8 +7,6 @@ from uuid import UUID
 
 from sqlmodel import Field, SQLModel
 
-from app.schemas.scene_packages import ScenePackage, SceneRunResult
-
 RUNTIME_ANNOTATION_TYPES = (datetime, UUID)
 
 
@@ -26,8 +24,6 @@ class TaskPackageBase(SQLModel):
     output_paths: list[str] = Field(default_factory=list)
     benchmark_outputs: list[str] = Field(default_factory=list)
     qc_checklist: list[str] = Field(default_factory=list)
-    scene_package: ScenePackage | None = None
-    scene_run: SceneRunResult | None = None
     execution_id: str | None = None
     qc_verdict: str | None = None
     next_step: str | None = None
