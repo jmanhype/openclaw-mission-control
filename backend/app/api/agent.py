@@ -52,16 +52,10 @@ from app.schemas.health import AgentHealthStatusResponse
 from app.schemas.pagination import DefaultLimitOffsetPage
 from app.schemas.tags import TagRef
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
-from app.schemas.task_packages import TaskPackageRead, TaskPackageSceneExecutionRequest
 from app.services.activity_log import record_activity
 from app.services.openclaw.coordination_service import GatewayCoordinationService
 from app.services.openclaw.policies import OpenClawAuthorizationPolicy
 from app.services.openclaw.provisioning_db import AgentLifecycleService
-from app.services.studio.task_package_execution import (
-    SceneTaskExecutionActor,
-    SceneTaskExecutionError,
-    execute_task_scene_package,
-)
 from app.services.tags import replace_tags, validate_tag_ids
 from app.services.task_dependencies import (
     blocked_by_dependency_ids,
@@ -990,107 +984,6 @@ async def delete_task(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
     await tasks_api.delete_task_and_related_records(session, task=task)
     return OkResponse()
-
-
-@router.get(
-    "/boards/{board_id}/tasks/{task_id}/package",
-    response_model=TaskPackageRead,
-    tags=AGENT_BOARD_TAGS,
-    openapi_extra=_agent_board_openapi_hints(
-        intent="agent_task_package_read",
-        when_to_use=[
-            "Worker needs the structured package before running a staged media or scene task.",
-            "Lead needs the canonical workflow/keyframe package attached to a task.",
-        ],
-        routing_examples=[
-            {
-                "input": {
-                    "intent": "read the current scene package for this task",
-                    "required_privilege": "any_agent",
-                },
-                "decision": "agent_task_package_read",
-            }
-        ],
-    ),
-)
-async def get_task_package(
-    task: Task = TASK_DEP,
-    session: AsyncSession = SESSION_DEP,
-    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
-) -> TaskPackageRead:
-    """Read the structured task package as the authenticated board agent."""
-    _guard_task_access(agent_ctx, task)
-    return await tasks_api.get_task_package(
-        task=task,
-        session=session,
-        _actor=_actor(agent_ctx),
-    )
-
-
-@router.post(
-    "/boards/{board_id}/tasks/{task_id}/execute-scene-package",
-    response_model=TaskPackageRead,
-    tags=AGENT_BOARD_TAGS,
-    openapi_extra=_agent_board_openapi_hints(
-        intent="agent_task_scene_package_execute",
-        when_to_use=[
-            "Worker is ready to run the stored scene package for a staged FF/LF task.",
-            "Lead wants to trigger a canonical scene package execution against ComfyUI.",
-        ],
-        when_not_to_use=[
-            "Task has no stored scene_package payload yet.",
-            "Only a generic task comment or status update is needed.",
-        ],
-        routing_policy=[
-            "Use this only after the task package already contains a canonical scene_package.",
-            "Prefer the task-package read route first when you need to inspect the package before running it.",
-        ],
-        side_effects=[
-            "Queues one or more ComfyUI prompts through the scene package runner.",
-            "Persists scene_run, output paths, and blocker state back onto the task package.",
-            "Writes a task-thread execution update with evidence or blocker details.",
-        ],
-        routing_examples=[
-            {
-                "input": {
-                    "intent": "execute the stored scene package for this assigned task",
-                    "required_privilege": "assigned_worker_or_board_lead",
-                },
-                "decision": "agent_task_scene_package_execute",
-            }
-        ],
-    ),
-)
-async def execute_scene_package(
-    payload: TaskPackageSceneExecutionRequest,
-    task: Task = TASK_DEP,
-    session: AsyncSession = SESSION_DEP,
-    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
-) -> TaskPackageRead:
-    """Execute a stored scene package and persist the resulting scene run."""
-    _guard_task_access(agent_ctx, task)
-    is_lead = agent_ctx.agent.is_board_lead
-    is_assignee = task.assigned_agent_id == agent_ctx.agent.id
-    if not is_lead and not is_assignee:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the assigned worker or board lead can execute a scene package.",
-        )
-    try:
-        return await execute_task_scene_package(
-            session=session,
-            task=task,
-            actor=SceneTaskExecutionActor(
-                agent_id=agent_ctx.agent.id,
-                agent_name=agent_ctx.agent.name,
-            ),
-            payload=payload,
-        )
-    except SceneTaskExecutionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
 
 
 @router.get(
