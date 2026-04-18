@@ -36,6 +36,8 @@ class TaskPackage(QueryModel, table=True):
     output_paths: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     benchmark_outputs: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     qc_checklist: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    scene_package: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    scene_run: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
     execution_id: str | None = None
     qc_verdict: str | None = None
     next_step: str | None = None

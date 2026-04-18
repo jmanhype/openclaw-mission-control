@@ -16,6 +16,14 @@ from app.models.organizations import Organization
 from app.models.task_packages import TaskPackage
 from app.models.tasks import Task
 from app.models.boards import Board
+from app.schemas.scene_packages import (
+    SceneOutputKind,
+    ScenePackage,
+    SceneRunResult,
+    SceneShotPackage,
+    SceneShotRun,
+    SceneWorkflowInputTarget,
+)
 from app.schemas.task_packages import TaskPackageUpsert
 
 
@@ -79,6 +87,32 @@ async def test_upsert_task_package_creates_and_reads_package() -> None:
                 workflow_paths=["/workflows/video_wan2_2_5B_ti2v_reddit_bald_man.api.json"],
                 input_paths=["/input/elder_man.jpg"],
                 output_paths=["/output/wan22/elder_man_00001_.mp4"],
+                scene_package=ScenePackage(
+                    id="scene_001",
+                    title="Bus arrival",
+                    output_dir="runs/scene_001",
+                    shots=[
+                        SceneShotPackage(
+                            id="shot_001",
+                            workflow_api_json={"10": {"inputs": {"image": ""}}},
+                            first_frame_path="/input/shot_001_first.png",
+                            first_frame_target=SceneWorkflowInputTarget(node_id="10"),
+                            output_kind=SceneOutputKind.VIDEO,
+                        )
+                    ],
+                ),
+                scene_run=SceneRunResult(
+                    scene_id="scene_001",
+                    output_dir="runs/scene_001",
+                    shots=[
+                        SceneShotRun(
+                            shot_id="shot_001",
+                            prompt_id="prompt-123",
+                            output_path="/output/wan22/elder_man_00001_.mp4",
+                            terminal_frame_path="/output/wan22/elder_man_00001_last.png",
+                        )
+                    ],
+                ),
                 execution_id="prompt-123",
                 qc_verdict="pass",
                 next_step="Promote baseline",
@@ -103,6 +137,11 @@ async def test_upsert_task_package_creates_and_reads_package() -> None:
             assert created.updated_by_agent_id == agent.id
             assert created.workflow_paths == payload.workflow_paths
             assert created.output_paths == payload.output_paths
+            assert created.scene_package is not None
+            assert created.scene_package.id == "scene_001"
+            assert created.scene_package.shots[0].first_frame_target.node_id == "10"
+            assert created.scene_run is not None
+            assert created.scene_run.shots[0].terminal_frame_path is not None
             assert created.execution_id == "prompt-123"
     finally:
         await engine.dispose()

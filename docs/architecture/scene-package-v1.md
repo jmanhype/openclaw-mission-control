@@ -85,13 +85,14 @@ shots:
     output_kind: video
 ```
 
-## Current Prototype
+## Current Paperclip Backend Home
 
-The first prototype lives in `DirectorsConsole/Orchestrator`:
+The first runnable implementation now lives in the Paperclip backend:
 
-- model: `orchestrator/core/models/scene_package.py`
-- runner: `orchestrator/core/engine/scene_chain_runner.py`
-- CLI: `scripts/run_scene_package.py`
+- schema: `backend/app/schemas/scene_packages.py`
+- runner: `backend/app/services/studio/scene_package_runner.py`
+- ComfyUI client: `backend/app/services/studio/comfyui.py`
+- task package attachment point: `backend/app/schemas/task_packages.py`
 
 Current behavior:
 
@@ -100,6 +101,7 @@ Current behavior:
 - download the resulting clip
 - extract the last frame from the clip
 - feed that frame into the next shot when `chain_previous_terminal_frame=true`
+- persist a typed `scene_package` / `scene_run` payload alongside the task package
 
 ## Not In Scope Yet
 

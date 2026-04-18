@@ -33,6 +33,16 @@ from app.schemas.organizations import (
     OrganizationMemberUpdate,
     OrganizationRead,
 )
+from app.schemas.scene_packages import (
+    SceneElementKind,
+    SceneElementReference,
+    SceneOutputKind,
+    ScenePackage,
+    SceneRunResult,
+    SceneShotPackage,
+    SceneShotRun,
+    SceneWorkflowInputTarget,
+)
 from app.schemas.skills_marketplace import (
     MarketplaceSkillActionResponse,
     MarketplaceSkillCardRead,
@@ -89,6 +99,14 @@ __all__ = [
     "OrganizationMemberRead",
     "OrganizationMemberUpdate",
     "OrganizationRead",
+    "SceneElementKind",
+    "SceneElementReference",
+    "SceneOutputKind",
+    "ScenePackage",
+    "SceneRunResult",
+    "SceneShotPackage",
+    "SceneShotRun",
+    "SceneWorkflowInputTarget",
     "SoulsDirectoryMarkdownResponse",
     "SoulsDirectorySearchResponse",
     "SoulsDirectorySoulRef",
