@@ -182,6 +182,13 @@ def test_openapi_agent_tool_endpoints_include_llm_hints() -> None:
         assert responses
     assert len(op_ids) == len(expected_paths)
 
+    ask_user_op = schema["paths"]["/api/v1/agent/boards/{board_id}/gateway/main/ask-user"]["post"]
+    negative_guidance = ask_user_op.get("x-negative-guidance", [])
+    assert (
+        "Do not use this for routine model, workflow, or lane choice when a documented local default or proven lane already exists."
+        in negative_guidance
+    )
+
 
 def test_openapi_agent_schemas_include_discoverability_hints() -> None:
     """Schema-level metadata should advertise usage context for model-driven tooling."""

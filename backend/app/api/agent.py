@@ -1819,6 +1819,7 @@ async def delete_board_agent(
         "x-negative-guidance": [
             "Do not use this for operational routing to another board lead.",
             "Do not use when there is no blocking ambiguity or consent requirement.",
+            "Do not use this for routine model, workflow, or lane choice when a documented local default or proven lane already exists.",
         ],
         "x-routing-policy": [
             "Use when user permission or preference is required.",

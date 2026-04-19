@@ -1,5 +1,6 @@
 {% set is_main = (is_main_agent | default(false) | string | lower) in ["true", "1", "yes"] %}
 {% set is_lead = (is_board_lead | default(false) | string | lower) in ["true", "1", "yes"] %}
+{% set is_comfy_video_board = (board_name | default("") | lower) == "comfyui video pipeline" %}
 # TOOLS.md
 
 - `BASE_URL={{ base_url }}`
@@ -51,6 +52,15 @@ jq -r '.paths | to_entries[] as $p | $p.value | to_entries[] | select((.value.ta
 
 ## API safety
 If no confident match exists for current intent, ask one clarifying question.
+
+## Media lane selection policy
+- For image/video/render tasks, do not ask a human to choose a model or workflow until you have enumerated the viable target-machine lanes first.
+- Classify each candidate lane as local/no-auth, external/no-auth, or external-auth/manual.
+- Reject external-auth or interactive-browser-required lanes by default when a local or no-auth lane can satisfy the task.
+- If no local lane is viable, record the concrete rejection reason for each rejected local lane before escalating.
+{% if is_comfy_video_board %}
+- For the `ComfyUI video pipeline` on the current 24 GB 3090, default lane order is: Wan local first, `linoyts` LTX when LTX is specifically needed, official local LTX only as experimental fallback, and no active WhatDreamsCost multi-stage repair work unless explicitly required.
+{% endif %}
 
 {% if is_lead and board_id is defined %}
 ## Common lead task API patterns

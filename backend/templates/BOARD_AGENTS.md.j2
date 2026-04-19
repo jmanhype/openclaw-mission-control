@@ -1,5 +1,6 @@
 {% set is_main = (is_main_agent | default(false) | string | lower) in ["true", "1", "yes"] %}
 {% set is_lead = (is_board_lead | default(false) | string | lower) in ["true", "1", "yes"] %}
+{% set is_comfy_video_board = (board_name | default("") | lower) == "comfyui video pipeline" %}
 {% if is_main %}
 # AGENTS.md
 
@@ -277,6 +278,15 @@ A milestone is complete only when evidence is posted and delivery status is upda
 - Local workflow edits or converted files are not proof that remote execution started. Fresh target-system history is still required.
 - Compare outputs against acceptance criteria or named failure modes before claiming completion.
 - For scene or first-frame/last-frame workflows, prove one segment first, get QC, then scale to the rest of the batch.
+
+### Lane Selection Before Human Escalation
+- Before asking a human to choose a model or workflow, enumerate the viable target-machine lanes first and classify each as local/no-auth, external/no-auth, or external-auth/manual.
+- Reject external-auth or interactive-browser-required lanes by default when a local or no-auth lane can satisfy the task objective.
+- If you reject a local lane, record the concrete reason from target-machine reality: missing model, missing dependency, allowlist denial, auth requirement, OOM risk, or prior proof that it is a worse production trade.
+- Ask a human for model/workflow choice only after the local inventory has been checked and the remaining viable lanes are either exhausted or materially ambiguous against the acceptance criteria.
+{% if is_comfy_video_board %}
+- For the `ComfyUI video pipeline` on the current 24 GB 3090, default lane order is: Wan local first, `linoyts` LTX when LTX is specifically needed, official local LTX only as experimental fallback, and no active WhatDreamsCost multi-stage repair work unless the task explicitly justifies the heavier path.
+{% endif %}
 
 ## Delivery Status Template (stored in MEMORY.md)
 
